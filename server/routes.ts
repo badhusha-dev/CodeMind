@@ -457,6 +457,30 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // API usage stats
+  app.post("/api/usage-stats", async (req, res) => {
+    try {
+      const { apiKey } = req.body;
+      
+      if (!apiKey) {
+        return res.status(400).json({ message: "API key is required" });
+      }
+
+      const { getApiUsage } = await import("./services/gemini");
+      const usage = getApiUsage(apiKey);
+      
+      res.json(usage || {
+        requestCount: 0,
+        totalTokens: 0,
+        lastRequestTime: new Date(),
+        rateLimitRemaining: 60,
+        rateLimitReset: new Date(Date.now() + 60000)
+      });
+    } catch (error) {
+      res.status(500).json({ message: "Failed to get usage stats" });
+    }
+  });
+
   // Get all chats
   app.get("/api/chats", async (req, res) => {
     try {

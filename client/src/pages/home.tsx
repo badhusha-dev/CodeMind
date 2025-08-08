@@ -72,6 +72,14 @@ export default function Home() {
     console.log("Creating file:", path, content);
   };
 
+  // Placeholder for handleNewChat, as it's used in Sidebar but not defined in the original code.
+  // This would typically generate a new chat ID and set it as current.
+  const handleNewChat = () => {
+    const newChatId = `chat_${Date.now()}`;
+    setCurrentChatId(newChatId);
+    console.log("New chat created:", newChatId);
+  };
+
   if (!apiKey) {
     return (
       <div className="h-screen flex items-center justify-center bg-gray-50 dark:bg-slate-900">
@@ -89,23 +97,25 @@ export default function Home() {
               <h1 className="text-xl font-bold text-gray-900 dark:text-white mb-4">
                 Code AI Agent
               </h1>
-              
+
               <TabsList className="grid w-full grid-cols-3">
                 <TabsTrigger value="chat">Chat</TabsTrigger>
                 <TabsTrigger value="repositories">Repos</TabsTrigger>
                 <TabsTrigger value="workspace">Files</TabsTrigger>
               </TabsList>
             </div>
-            
+
             <div className="flex-1 overflow-hidden">
               <TabsContent value="chat" className="h-full">
                 <Sidebar 
                   currentChatId={currentChatId}
                   onSelectChat={setCurrentChatId}
+                  onNewChat={handleNewChat}
                   onLogout={handleLogout}
+                  apiKey={apiKey}
                 />
               </TabsContent>
-              
+
               <TabsContent value="repositories" className="h-full">
                 <div className="p-4 h-full overflow-y-auto">
                   {githubUser ? (
@@ -119,7 +129,7 @@ export default function Home() {
                   )}
                 </div>
               </TabsContent>
-              
+
               <TabsContent value="workspace" className="h-full">
                 {currentRepository ? (
                   <FileExplorer
@@ -137,12 +147,12 @@ export default function Home() {
               </TabsContent>
             </div>
           </div>
-          
+
           <div className="flex-1">
             <TabsContent value="chat" className="h-full">
               <ChatInterface chatId={currentChatId} apiKey={apiKey} />
             </TabsContent>
-            
+
             <TabsContent value="repositories" className="h-full">
               <div className="flex items-center justify-center h-full bg-gray-50 dark:bg-slate-800">
                 <div className="text-center">
@@ -158,7 +168,7 @@ export default function Home() {
                 </div>
               </div>
             </TabsContent>
-            
+
             <TabsContent value="workspace" className="h-full">
               <CodeEditor
                 file={selectedFile}

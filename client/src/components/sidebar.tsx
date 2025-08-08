@@ -17,14 +17,16 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
+import { ApiUsageDisplay } from "./api-usage-display";
 
 interface SidebarProps {
   currentChatId: string | null;
   onSelectChat: (chatId: string | null) => void;
   onLogout: () => void;
+  apiKey: string;
 }
 
-export function Sidebar({ currentChatId, onSelectChat, onLogout }: SidebarProps) {
+export function Sidebar({ currentChatId, onSelectChat, onLogout, apiKey }: SidebarProps) {
   const { theme, toggleTheme } = useTheme();
   const queryClient = useQueryClient();
 
@@ -197,6 +199,11 @@ export function Sidebar({ currentChatId, onSelectChat, onLogout }: SidebarProps)
             </div>
           ))
         )}
+      </div>
+
+      {/* API Usage Display */}
+      <div className="p-4 border-t border-gray-200 dark:border-slate-700">
+        <ApiUsageDisplay apiKey={apiKey} />
       </div>
 
       {/* User Info */}
