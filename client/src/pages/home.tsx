@@ -26,12 +26,20 @@ export default function Home() {
   const [githubUser, setGithubUser] = useState<GitHubUser | null>(null);
   const [currentRepository, setCurrentRepository] = useState<Repository | null>(null);
   const [selectedFile, setSelectedFile] = useState<WorkspaceFile | null>(null);
+  const [currentProject, setCurrentProject] = useState<{language: string, framework: string} | null>(null);
   const [activeTab, setActiveTab] = useState("chat");
 
   useEffect(() => {
-    const storedApiKey = localStorage.getItem("gemini_api_key");
-    if (storedApiKey) {
-      setApiKey(storedApiKey);
+    const savedApiKey = localStorage.getItem("gemini_api_key");
+    if (savedApiKey) {
+      setApiKey(savedApiKey);
+    }
+
+    // Load current project context
+    const projectLanguage = localStorage.getItem('currentProjectLanguage');
+    const projectFramework = localStorage.getItem('currentProjectFramework');
+    if (projectLanguage && projectFramework) {
+      setCurrentProject({ language: projectLanguage, framework: projectFramework });
     }
   }, []);
 
@@ -80,6 +88,19 @@ export default function Home() {
     console.log("New chat created:", newChatId);
   };
 
+  const handleNewProject = (language: string, framework: string) => {
+    localStorage.setItem('currentProjectLanguage', language);
+    localStorage.setItem('currentProjectFramework', framework);
+    setCurrentProject({ language, framework });
+    // Optionally, you might want to clear currentChatId or repository here
+    // depending on how you want to transition between projects and chats/repos
+    setCurrentChatId(null); 
+    setSelectedFile(null);
+    // Switch to workspace tab
+    setActiveTab("workspace");
+  };
+
+
   if (!apiKey) {
     return (
       <div className="h-screen flex items-center justify-center bg-gray-50 dark:bg-slate-900">
@@ -113,6 +134,7 @@ export default function Home() {
                   onNewChat={handleNewChat}
                   onLogout={handleLogout}
                   apiKey={apiKey}
+                  onNewProject={handleNewProject}
                 />
               </TabsContent>
 
@@ -175,6 +197,7 @@ export default function Home() {
                 apiKey={apiKey}
                 currentRepository={currentRepository}
                 currentUser={githubUser}
+                currentProject={currentProject}
               />
             </TabsContent>
           </div>

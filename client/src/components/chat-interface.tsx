@@ -21,6 +21,12 @@ export function ChatInterface({ chatId, apiKey }: ChatInterfaceProps) {
   const queryClient = useQueryClient();
   const { toast } = useToast();
 
+  // State for new project modal (for future implementation based on user request)
+  const [isNewProjectModalOpen, setIsNewProjectModalOpen] = useState(false);
+  const [selectedLanguage, setSelectedLanguage] = useState("");
+  const [selectedFramework, setSelectedFramework] = useState("");
+
+
   const { data: chat } = useQuery<Chat>({
     queryKey: ["/api/chats", chatId],
     enabled: !!chatId,
@@ -66,12 +72,30 @@ export function ChatInterface({ chatId, apiKey }: ChatInterfaceProps) {
 
   const downloadProjectMutation = useMutation({
     mutationFn: async () => {
-      const response = await fetch("/api/workspace/download", {
+      // State for download progress, if needed in the future
+      // const [isDownloading, setIsDownloading] = useState(false); // This line is not in original, but present in changes
+      // For now, assuming isDownloading is managed elsewhere or not directly needed for this mutation's state
+
+      const timestamp = new Date().toISOString().slice(0, 19).replace(/:/g, "-");
+      const filename = `ai-generated-project-${timestamp}.zip`;
+
+      // Get current project framework info from localStorage or context
+      const projectLanguage = localStorage.getItem('currentProjectLanguage');
+      const projectFramework = localStorage.getItem('currentProjectFramework');
+
+      const url = new URL("/api/workspace/download", window.location.origin);
+      if (projectLanguage && projectFramework) {
+        url.searchParams.set('language', projectLanguage);
+        url.searchParams.set('framework', projectFramework);
+      }
+
+      const response = await fetch(url.toString(), {
         method: "GET",
         headers: {
           "Accept": "application/zip",
         },
       });
+
 
       if (!response.ok) {
         throw new Error(`Download failed: ${response.status} ${response.statusText}`);
@@ -87,12 +111,10 @@ export function ChatInterface({ chatId, apiKey }: ChatInterfaceProps) {
         throw new Error("Downloaded file is empty");
       }
 
-      const timestamp = new Date().toISOString().slice(0, 19).replace(/:/g, "-");
-      const filename = `ai-generated-project-${timestamp}.zip`;
 
-      const url = window.URL.createObjectURL(blob);
+      const downloadUrl = window.URL.createObjectURL(blob);
       const a = document.createElement("a");
-      a.href = url;
+      a.href = downloadUrl;
       a.download = filename;
       a.style.display = "none";
       document.body.appendChild(a);
@@ -101,7 +123,7 @@ export function ChatInterface({ chatId, apiKey }: ChatInterfaceProps) {
       // Clean up
       setTimeout(() => {
         document.body.removeChild(a);
-        window.URL.revokeObjectURL(url);
+        window.URL.revokeObjectURL(downloadUrl);
       }, 100);
 
       return { filename, size: blob.size };
@@ -165,10 +187,53 @@ export function ChatInterface({ chatId, apiKey }: ChatInterfaceProps) {
   };
 
   const handleDownloadProject = () => {
+    // Here, we would typically trigger the new project creation if not already done,
+    // but for this fix, we directly call the mutation.
+    // In a full implementation, this would involve opening the modal first.
     if (downloadProjectMutation.isPending) return;
     downloadProjectMutation.mutate();
   };
 
+  // Placeholder function for new project creation
+  const createNewProject = async () => {
+    if (!selectedLanguage || !selectedFramework) {
+      toast({
+        title: "Missing Information",
+        description: "Please select both programming language and framework.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    try {
+      const response = await apiRequest("POST", "/api/new-project", {
+        language: selectedLanguage,
+        framework: selectedFramework,
+      });
+      const result = await response.json();
+
+      // Store selection in workspace session (e.g., localStorage for simplicity)
+      localStorage.setItem('currentProjectLanguage', selectedLanguage);
+      localStorage.setItem('currentProjectFramework', selectedFramework);
+
+      toast({
+        title: "New Project Created",
+        description: `Project scaffolded for ${selectedFramework} (${selectedLanguage}).`,
+      });
+
+      // Close modal and potentially refresh or navigate
+      setIsNewProjectModalOpen(false);
+      // In a real app, you might want to clear current messages or start a new chat context.
+      // queryClient.invalidateQueries({ queryKey: ["/api/chats"] }); // Example to refresh chats list
+    } catch (error) {
+      console.error("Project creation failed:", error);
+      toast({
+        title: "Project Creation Failed",
+        description: error instanceof Error ? error.message : "Failed to create project.",
+        variant: "destructive",
+      });
+    }
+  };
 
   if (!chatId) {
     return (
@@ -183,7 +248,79 @@ export function ChatInterface({ chatId, apiKey }: ChatInterfaceProps) {
           <p className="text-gray-600 dark:text-gray-400 max-w-md mx-auto">
             Start a new conversation to begin coding with AI assistance. Click "New Chat" to get started.
           </p>
+          {/* Button to open the new project modal */}
+          <Button onClick={() => setIsNewProjectModalOpen(true)} className="mt-4">
+            New Project
+          </Button>
         </div>
+
+        {/* New Project Modal (Placeholder for implementation) */}
+        {isNewProjectModalOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
+            <div className="bg-white dark:bg-gray-800 p-8 rounded-lg shadow-xl max-w-lg w-full">
+              <div className="flex justify-between items-center mb-6">
+                <h3 className="text-xl font-semibold text-gray-900 dark:text-white">Create New Project</h3>
+                <Button variant="ghost" size="icon" onClick={() => setIsNewProjectModalOpen(false)}>
+                  <X className="w-6 h-6 text-gray-500 dark:text-gray-400" />
+                </Button>
+              </div>
+              <div className="space-y-6">
+                <div>
+                  <label htmlFor="language" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Programming Language</label>
+                  <select
+                    id="language"
+                    value={selectedLanguage}
+                    onChange={(e) => setSelectedLanguage(e.target.value)}
+                    className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-blue-500 focus:border-blue-500"
+                  >
+                    <option value="">Select Language</option>
+                    <option value="JavaScript">JavaScript</option>
+                    <option value="TypeScript">TypeScript</option>
+                    <option value="Python">Python</option>
+                    <option value="Java">Java</option>
+                    {/* Add more languages */}
+                  </select>
+                </div>
+                <div>
+                  <label htmlFor="framework" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Framework</label>
+                  <select
+                    id="framework"
+                    value={selectedFramework}
+                    onChange={(e) => setSelectedFramework(e.target.value)}
+                    className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-blue-500 focus:border-blue-500"
+                  >
+                    <option value="">Select Framework</option>
+                    {/* Options based on language, simplified here */}
+                    {selectedLanguage === "JavaScript" && (
+                      <>
+                        <option value="React">React</option>
+                        <option value="Next.js">Next.js</option>
+                        <option value="Node.js + Express">Node.js + Express</option>
+                      </>
+                    )}
+                    {selectedLanguage === "Python" && (
+                      <>
+                        <option value="Flask">Flask</option>
+                        <option value="Django">Django</option>
+                      </>
+                    )}
+                    {selectedLanguage === "Java" && (
+                      <>
+                        <option value="Spring Boot">Spring Boot</option>
+                      </>
+                    )}
+                    {/* Add more frameworks */}
+                  </select>
+                </div>
+              </div>
+              <div className="flex justify-end mt-6">
+                <Button onClick={createNewProject} className="bg-blue-600 hover:bg-blue-700 text-white">
+                  Create Project
+                </Button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     );
   }
@@ -303,7 +440,7 @@ export function ChatInterface({ chatId, apiKey }: ChatInterfaceProps) {
           </div>
         )}
 
-        
+
 
         <div ref={messagesEndRef} />
       </div>

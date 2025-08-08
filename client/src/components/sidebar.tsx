@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Plus, Settings, LogOut, Trash2 } from "lucide-react";
+import { Plus, Settings, LogOut, Trash2, FolderPlus } from "lucide-react";
 import { useTheme } from "@/hooks/use-theme";
 import { Chat } from "@/types/chat";
 import { apiRequest } from "@/lib/queryClient";
@@ -18,6 +18,7 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { ApiUsageDisplay } from "./api-usage-display";
+import { NewProjectModal } from "./new-project-modal";
 
 interface SidebarProps {
   currentChatId: string | null;
@@ -29,6 +30,7 @@ interface SidebarProps {
 export function Sidebar({ currentChatId, onSelectChat, onLogout, apiKey }: SidebarProps) {
   const { theme, toggleTheme } = useTheme();
   const queryClient = useQueryClient();
+  const [showNewProjectModal, setShowNewProjectModal] = useState(false);
 
   const { data: chats = [], isLoading } = useQuery<Chat[]>({
     queryKey: ["/api/chats"],
@@ -108,14 +110,25 @@ export function Sidebar({ currentChatId, onSelectChat, onLogout, apiKey }: Sideb
           </div>
         </div>
 
-        <Button
-          onClick={handleNewChat}
-          disabled={createChatMutation.isPending}
-          className="w-full bg-blue-600 hover:bg-blue-700 text-white"
-        >
-          <Plus className="w-4 h-4 mr-2" />
-          New Chat
-        </Button>
+        <div className="space-y-2">
+          <Button
+            onClick={handleNewChat}
+            disabled={createChatMutation.isPending}
+            className="w-full bg-blue-600 hover:bg-blue-700 text-white"
+          >
+            <Plus className="w-4 h-4 mr-2" />
+            New Chat
+          </Button>
+          
+          <Button
+            onClick={() => setShowNewProjectModal(true)}
+            variant="outline"
+            className="w-full"
+          >
+            <FolderPlus className="w-4 h-4 mr-2" />
+            New Project
+          </Button>
+        </div>
       </div>
 
       {/* Chat History */}
@@ -229,6 +242,15 @@ export function Sidebar({ currentChatId, onSelectChat, onLogout, apiKey }: Sideb
           </Button>
         </div>
       </div>
+
+      <NewProjectModal 
+        open={showNewProjectModal}
+        onOpenChange={setShowNewProjectModal}
+        onProjectCreated={(project) => {
+          // Optionally handle project creation success
+          console.log('Project created:', project);
+        }}
+      />
     </div>
   );
 }

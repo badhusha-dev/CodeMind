@@ -424,6 +424,43 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // New project creation
+  app.post("/api/projects/create", async (req, res) => {
+    try {
+      const { language, framework, projectName } = req.body;
+      
+      if (!language || !framework || !projectName) {
+        return res.status(400).json({ message: "Language, framework, and project name are required" });
+      }
+
+      const { createFrameworkStructure } = await import("./services/workspace");
+      const projectStructure = await createFrameworkStructure(language, framework, projectName);
+      
+      // Create workspace files for the framework structure
+      const createdFiles = [];
+      for (const file of projectStructure.files) {
+        const workspaceFile = await storage.createWorkspaceFile({
+          repositoryId: null,
+          path: file.path,
+          content: file.content,
+          language: detectLanguage(file.path),
+          isModified: false,
+          isTracked: false,
+        });
+        createdFiles.push(workspaceFile);
+      }
+      
+      res.json({ 
+        projectStructure,
+        files: createdFiles,
+        message: `${framework} project structure created successfully` 
+      });
+    } catch (error) {
+      console.error("Project creation error:", error);
+      res.status(500).json({ message: "Failed to create project structure" });
+    }
+  });
+
   // Project download
   app.get("/api/workspace/download/:repositoryName", async (req, res) => {
     try {
@@ -622,7 +659,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Download workspace as ZIP with AI-generated code from chat
   app.get("/api/workspace/download", async (req, res) => {
     try {
-      const { createChatProjectZip } = await import("./services/workspace");
+      const { language, framework } = req.query;
+      const { createChatProjectZip, createFrameworkProjectZip } = await import("./services/workspace");
       
       // Get all chats and messages to extract code
       const chats = await storage.getChats();
@@ -637,7 +675,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const timestamp = new Date().toISOString().slice(0, 19).replace(/:/g, "-");
       const projectName = `ai-generated-project-${timestamp}`;
       
-      const zipBuffer = await createChatProjectZip(allMessages, projectName);
+      let zipBuffer;
+      if (language && framework) {
+        // Create framework-aware project
+        zipBuffer = await createFrameworkProjectZip(allMessages, projectName, language as string, framework as string);
+      } else {
+        // Fallback to regular chat project
+        zipBuffer = await createChatProjectZip(allMessages, projectName);
+      }
       
       res.setHeader("Content-Type", "application/zip");
       res.setHeader("Content-Disposition", `attachment; filename="${projectName}.zip"`);
