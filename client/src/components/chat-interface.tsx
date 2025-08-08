@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Send, Download, Trash2, Loader2, Paperclip, FolderDown } from "lucide-react";
+import { Send, Download, Trash2, Loader2, Paperclip, FolderDown, FileText, X } from "lucide-react";
 import { MessageBubble } from "./message-bubble";
 import { Message, Chat } from "@/types/chat";
 import { apiRequest } from "@/lib/queryClient";
@@ -51,7 +51,7 @@ export function ChatInterface({ chatId, apiKey }: ChatInterfaceProps) {
     mutationFn: async (chatId: string) => {
       const response = await fetch(`/api/chats/${chatId}/download`);
       if (!response.ok) throw new Error("Download failed");
-      
+
       const blob = await response.blob();
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement("a");
@@ -72,24 +72,24 @@ export function ChatInterface({ chatId, apiKey }: ChatInterfaceProps) {
           "Accept": "application/zip",
         },
       });
-      
+
       if (!response.ok) {
         throw new Error(`Download failed: ${response.status} ${response.statusText}`);
       }
-      
+
       const contentType = response.headers.get("content-type");
       if (!contentType || !contentType.includes("application/zip")) {
         throw new Error("Invalid file type received");
       }
-      
+
       const blob = await response.blob();
       if (blob.size === 0) {
         throw new Error("Downloaded file is empty");
       }
-      
+
       const timestamp = new Date().toISOString().slice(0, 19).replace(/:/g, "-");
       const filename = `ai-generated-project-${timestamp}.zip`;
-      
+
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
@@ -97,13 +97,13 @@ export function ChatInterface({ chatId, apiKey }: ChatInterfaceProps) {
       a.style.display = "none";
       document.body.appendChild(a);
       a.click();
-      
+
       // Clean up
       setTimeout(() => {
         document.body.removeChild(a);
         window.URL.revokeObjectURL(url);
       }, 100);
-      
+
       return { filename, size: blob.size };
     },
     onSuccess: (data) => {
@@ -163,6 +163,12 @@ export function ChatInterface({ chatId, apiKey }: ChatInterfaceProps) {
       downloadChatMutation.mutate(chatId);
     }
   };
+
+  const handleDownloadProject = () => {
+    if (downloadProjectMutation.isPending) return;
+    downloadProjectMutation.mutate();
+  };
+
 
   if (!chatId) {
     return (
@@ -280,7 +286,7 @@ export function ChatInterface({ chatId, apiKey }: ChatInterfaceProps) {
                   Get all the AI-generated code and files as a ZIP archive
                 </p>
                 <Button
-                  onClick={() => downloadProjectMutation.mutate()}
+                  onClick={handleDownloadProject}
                   disabled={downloadProjectMutation.isPending}
                   size="sm"
                   className="bg-blue-600 hover:bg-blue-700 text-white"
@@ -296,7 +302,111 @@ export function ChatInterface({ chatId, apiKey }: ChatInterfaceProps) {
             </div>
           </div>
         )}
-        
+
+        {/* Project Actions */}
+          <div className="flex items-center gap-2 pt-2 border-t flex-wrap">
+            <button
+              onClick={handleDownloadProject}
+              disabled={isDownloading}
+              className="flex items-center gap-2 px-3 py-2 text-sm bg-primary text-primary-foreground rounded-md hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            >
+              {isDownloading ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Preparing...
+                </>
+              ) : (
+                <>
+                  <Download className="h-4 w-4" />
+                  Download Project
+                </>
+              )}
+            </button>
+
+            <button
+              onClick={() => setShowReadmePreview(!showReadmePreview)}
+              className="flex items-center gap-2 px-3 py-2 text-sm bg-secondary text-secondary-foreground rounded-md hover:bg-secondary/90 transition-colors"
+            >
+              <FileText className="h-4 w-4" />
+              {showReadmePreview ? 'Hide' : 'View'} README
+            </button>
+
+            {downloadStatus && (
+              <span className={`text-xs ${
+                downloadStatus.includes('Error') || downloadStatus.includes('Failed') 
+                  ? 'text-red-500' 
+                  : downloadStatus.includes('ready')
+                    ? 'text-green-500'
+                    : 'text-yellow-500'
+              }`}>
+                {downloadStatus}
+              </span>
+            )}
+          </div>
+
+          {/* README Preview */}
+          {showReadmePreview && (
+            <div className="mt-4 p-4 border rounded-lg bg-muted/50">
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="text-sm font-semibold flex items-center gap-2">
+                  <FileText className="h-4 w-4" />
+                  README.md Preview
+                </h3>
+                <button
+                  onClick={() => setShowReadmePreview(false)}
+                  className="text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+              <div className="prose prose-sm dark:prose-invert max-w-none">
+                <div className="bg-background rounded border p-4 max-h-96 overflow-y-auto">
+                  <div className="text-xs text-muted-foreground mb-4">
+                    This preview shows the README.md file for this AI-Powered GitHub IDE project
+                  </div>
+                  <div className="space-y-4 text-sm">
+                    <div>
+                      <h1 className="text-2xl font-bold mb-2">🚀 AI-Powered GitHub IDE</h1>
+                      <p className="text-muted-foreground mb-4">
+                        A full-stack web application combining AI assistance with GitHub integration and professional code editing.
+                      </p>
+                    </div>
+
+                    <div>
+                      <h2 className="text-lg font-semibold mb-2">✨ Key Features</h2>
+                      <ul className="list-disc list-inside space-y-1 text-sm">
+                        <li>AI-Powered Code Assistant with Google Gemini</li>
+                        <li>GitHub OAuth & Repository Management</li>
+                        <li>Monaco Code Editor with Syntax Highlighting</li>
+                        <li>File Explorer with Git Status</li>
+                        <li>Project Download & Export</li>
+                        <li>API Usage Tracking & Rate Limits</li>
+                      </ul>
+                    </div>
+
+                    <div>
+                      <h2 className="text-lg font-semibold mb-2">🛠️ Tech Stack</h2>
+                      <div className="grid grid-cols-2 gap-2 text-xs">
+                        <div>
+                          <strong>Frontend:</strong> React 18, TypeScript, Vite, Tailwind CSS
+                        </div>
+                        <div>
+                          <strong>Backend:</strong> Express.js, PostgreSQL, Drizzle ORM
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="pt-2 border-t">
+                      <p className="text-xs text-muted-foreground italic">
+                        Built with ❤️ using React, Express.js, and Google Gemini AI
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
         <div ref={messagesEndRef} />
       </div>
 
