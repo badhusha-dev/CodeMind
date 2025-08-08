@@ -1,0 +1,85 @@
+Upgrade the existing "Code AI Agent" web application with the following requirements:
+
+1. Gemini API Usage Tracking:
+
+After each AI request, show in the chat UI:
+
+API Requests Used (count since app start or since API key entry).
+
+Remaining Requests (based on user’s Gemini AI rate limit, assume default free-tier quota if not provided).
+
+Fetch usage data from Gemini’s API quota endpoint (if available) or track usage internally.
+
+Show a progress bar or counter (e.g., “12/60 requests used”).
+
+Display warning when usage is close to the limit.
+
+2. Fix GitHub Repo Integration:
+
+Implement GitHub OAuth 2.0 with proper redirect URIs that work in deployment.
+
+Ensure the following Git features work correctly via backend (Node.js + simple-git):
+
+git clone <repo>
+
+git pull
+
+git push
+
+git commit -m "message"
+
+git branch, git checkout
+
+git log (for commit history)
+
+Test that private repos can be accessed after OAuth login.
+
+Ensure token storage is secure (server-side session or encrypted).
+
+3. Download Full Project as Folder:
+
+Add a "Download Project" button in the chat area.
+
+When clicked, backend zips the workspace folder (with correct folder structure, not flattened).
+
+Include:
+
+All source files without compilation errors.
+
+A generated README.md explaining:
+
+Project overview
+
+How to run it locally
+
+Dependencies and installation commands
+
+.gitignore file for cleanliness.
+
+Make sure file names, extensions, and structure remain exactly as in the workspace.
+
+4. Integrated Chat + Actions Panel:
+
+When AI generates code or changes files:
+
+Show API usage stats at the bottom of each AI message.
+
+Provide "Download Updated Project" button next to the usage info.
+
+Ensure AI-generated code is inserted into the active workspace, replacing/adding files as needed.
+
+5. Error Handling & UX:
+
+If GitHub actions fail (e.g., push rejected), show clear error messages in the chat.
+
+Show a loader/spinner during cloning or downloading.
+
+Prevent partial downloads — only allow download when workspace is in a valid state.
+
+6. Deployment & Testing:
+
+Deploy frontend on Vercel and backend on Render/Railway.
+
+Ensure GitHub OAuth works on deployed version (set production redirect URLs).
+
+Test full workflow: Connect GitHub → Clone repo → Edit with AI → Commit → Push → Download.
