@@ -617,6 +617,27 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Download workspace as ZIP
+  app.get("/api/workspace/download", async (req, res) => {
+    try {
+      const { createProjectZip } = await import("./services/workspace");
+      const workspacePath = process.cwd();
+      
+      // Create project name based on timestamp
+      const timestamp = new Date().toISOString().slice(0, 19).replace(/:/g, "-");
+      const projectName = `ai-generated-project-${timestamp}`;
+      
+      const zipBuffer = await createProjectZip(workspacePath, projectName);
+      
+      res.setHeader("Content-Type", "application/zip");
+      res.setHeader("Content-Disposition", `attachment; filename="${projectName}.zip"`);
+      res.send(zipBuffer);
+    } catch (error) {
+      console.error("Error downloading workspace:", error);
+      res.status(500).json({ message: "Failed to download workspace" });
+    }
+  });
+
   const httpServer = createServer(app);
   return httpServer;
 }

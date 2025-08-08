@@ -2,11 +2,12 @@ import { useState, useRef, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Send, Download, Trash2, Loader2, Paperclip } from "lucide-react";
+import { Send, Download, Trash2, Loader2, Paperclip, FolderDown } from "lucide-react";
 import { MessageBubble } from "./message-bubble";
 import { Message, Chat } from "@/types/chat";
 import { apiRequest } from "@/lib/queryClient";
 import { cn } from "@/lib/utils";
+import { useToast } from "@/hooks/use-toast";
 
 interface ChatInterfaceProps {
   chatId: string | null;
@@ -18,6 +19,7 @@ export function ChatInterface({ chatId, apiKey }: ChatInterfaceProps) {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const queryClient = useQueryClient();
+  const { toast } = useToast();
 
   const { data: chat } = useQuery<Chat>({
     queryKey: ["/api/chats", chatId],
@@ -59,6 +61,36 @@ export function ChatInterface({ chatId, apiKey }: ChatInterfaceProps) {
       a.click();
       document.body.removeChild(a);
       window.URL.revokeObjectURL(url);
+    },
+  });
+
+  const downloadProjectMutation = useMutation({
+    mutationFn: async () => {
+      const response = await apiRequest("GET", "/api/workspace/download");
+      if (!response.ok) throw new Error("Project download failed");
+      
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `ai-generated-project.zip`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      window.URL.revokeObjectURL(url);
+    },
+    onSuccess: () => {
+      toast({
+        title: "Project Downloaded",
+        description: "Your AI-generated project has been downloaded successfully.",
+      });
+    },
+    onError: (error) => {
+      toast({
+        title: "Download Failed",
+        description: "Failed to download project. Please try again.",
+        variant: "destructive",
+      });
     },
   });
 
@@ -202,6 +234,36 @@ export function ChatInterface({ chatId, apiKey }: ChatInterfaceProps) {
                   </div>
                   <span className="text-gray-500 dark:text-gray-400 text-sm">AI is thinking...</span>
                 </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Show project download option after AI responses */}
+        {!sendMessageMutation.isPending && messages.length > 0 && messages[messages.length - 1]?.role === "assistant" && (
+          <div className="flex justify-center">
+            <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4 max-w-md">
+              <div className="text-center">
+                <FolderDown className="w-8 h-8 text-blue-600 dark:text-blue-400 mx-auto mb-2" />
+                <h3 className="text-sm font-medium text-gray-900 dark:text-white mb-1">
+                  Download Your Project
+                </h3>
+                <p className="text-xs text-gray-600 dark:text-gray-400 mb-3">
+                  Get all the AI-generated code and files as a ZIP archive
+                </p>
+                <Button
+                  onClick={() => downloadProjectMutation.mutate()}
+                  disabled={downloadProjectMutation.isPending}
+                  size="sm"
+                  className="bg-blue-600 hover:bg-blue-700 text-white"
+                >
+                  {downloadProjectMutation.isPending ? (
+                    <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                  ) : (
+                    <FolderDown className="w-4 h-4 mr-2" />
+                  )}
+                  Download Project
+                </Button>
               </div>
             </div>
           </div>
