@@ -1,0 +1,74 @@
+Enhance the "Code AI Agent" application so that when the user starts a new project, they:
+
+1. Choose Programming Language & Framework:
+
+Add a "New Project" modal where the user selects:
+
+Programming Language (JavaScript, TypeScript, Python, Java, etc.).
+
+Framework (React, Next.js, Node.js + Express, Flask, Django, Spring Boot, etc.).
+
+Store this selection in the current workspace session.
+
+2. Auto-Generate Framework Folder Structure:
+
+On project creation, generate the default folder structure for the selected framework before inserting any AI-generated code.
+
+Example:
+
+React: /src, /public, package.json, node_modules (excluded from download), vite.config.js or webpack.config.js.
+
+Next.js: /pages, /public, /styles, next.config.js, etc.
+
+Spring Boot: /src/main/java, /src/main/resources, pom.xml or build.gradle.
+
+Flask: /app, /templates, /static, requirements.txt.
+
+These structures should match official framework templates (use CLI scaffold commands or predefined templates).
+
+3. AI Code Insertion into Framework:
+
+When AI generates code, place it inside the correct folder in the structure.
+
+For example, React components go in /src/components.
+
+Spring Boot controllers go in /src/main/java/.../controller.
+
+4. Framework-Aware Downloads:
+
+When the user clicks "Download Project", bundle the project as a .zip with the full framework structure and generated files.
+
+Include:
+
+Framework’s default files (from initial scaffold).
+
+AI-generated code placed in correct directories.
+
+README.md explaining framework setup, installation, and run commands.
+
+.gitignore with framework-specific ignores.
+
+Maintain folder hierarchy exactly as it would appear if the project was scaffolded manually.
+
+5. Backend Changes:
+
+Add a /new-project API endpoint that:
+
+Receives language and framework from frontend.
+
+Creates the workspace with default structure for that framework.
+
+Stores selection in session or project metadata.
+
+Modify download endpoint to ensure it includes the framework’s default folders along with AI changes.
+
+6. Frontend Changes:
+
+Add a New Project button in sidebar/top bar.
+
+Show framework icons in the selection modal for better UX.
+
+After creating, open the file explorer showing the new scaffold structure.
+
+Goal:
+Ensure every new AI-generated project starts with a fully functional framework folder structure so that downloaded projects can be run immediately without missing files.
