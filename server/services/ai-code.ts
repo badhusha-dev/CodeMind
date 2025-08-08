@@ -2,6 +2,12 @@ import { GoogleGenAI } from "@google/genai";
 import { GitService } from "./git";
 import * as path from "path";
 
+export interface NewMessage {
+  chatId: string;
+  role: "user" | "assistant";
+  content: string;
+}
+
 export interface AICodeOperation {
   type: "refactor" | "add_feature" | "fix_bugs" | "write_docs" | "analyze";
   files: string[];
@@ -164,6 +170,25 @@ Follow conventional commit format (feat:, fix:, docs:, refactor:, etc.) and keep
   } catch (error) {
     console.error("Error generating commit message:", error);
     return "Update files";
+  }
+}
+
+export async function generateProject(
+  userMessage: string,
+  apiKey: string
+): Promise<string> {
+  try {
+    const genAI = new GoogleGenAI({ apiKey });
+    
+    const response = await genAI.models.generateContent({
+      model: "gemini-2.5-pro",
+      contents: userMessage,
+    });
+
+    return response.text || "I apologize, but I couldn't generate a response. Please try again.";
+  } catch (error) {
+    console.error("Error generating project response:", error);
+    return "I encountered an error while processing your request. Please check your API key and try again.";
   }
 }
 
