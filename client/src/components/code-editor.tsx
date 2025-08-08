@@ -23,12 +23,14 @@ import {
 } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { useState } from "react";
+import { getSocket, joinFile, leaveFile, sendCursor, sendChange } from "@/lib/socket";
 
 interface CodeEditorProps {
   file: WorkspaceFile | null;
   apiKey: string;
   currentRepository?: any;
   currentUser?: any;
+  currentProject?: { language: string; framework: string } | null;
 }
 
 export function CodeEditor({ file, apiKey, currentRepository, currentUser }: CodeEditorProps) {
@@ -38,6 +40,8 @@ export function CodeEditor({ file, apiKey, currentRepository, currentUser }: Cod
   const [aiDescription, setAiDescription] = useState("");
   const [showDiffPreview, setShowDiffPreview] = useState(false);
   const [pendingChanges, setPendingChanges] = useState<string>("");
+  const [remoteCursors, setRemoteCursors] = useState<Record<string, any>>({});
+  const [docVersion, setDocVersion] = useState<number>(1);
   const editorRef = useRef<any>(null);
   const { theme } = useTheme();
   const { toast } = useToast();
@@ -49,10 +53,55 @@ export function CodeEditor({ file, apiKey, currentRepository, currentUser }: Cod
     }
   }, [file]);
 
+  // Socket.IO integration for live collaboration
+  useEffect(() => {
+    if (!currentRepository?.name || !file?.path) return;
+    const repo = currentRepository.name as string;
+    const path = file.path as string;
+
+    joinFile(repo, path);
+    const socket = getSocket();
+
+    const handleFileState = (data: { path: string; version: number; content: string }) => {
+      if (data.path === path) {
+        setDocVersion(data.version);
+        setContent(data.content);
+      }
+    };
+    const handleChanged = (data: { path: string; version: number; content: string }) => {
+      if (data.path === path) {
+        setDocVersion(data.version);
+        setContent(data.content);
+      }
+    };
+    const handleConflict = (data: { path: string; serverVersion: number; serverContent: string }) => {
+      if (data.path === path) {
+        setDocVersion(data.serverVersion);
+        setContent(data.serverContent);
+        toast({ title: "Edit conflict", description: "Document updated to latest version. Please re-apply your change." });
+      }
+    };
+    const handleCursor = (data: any) => {
+      setRemoteCursors((prev) => ({ ...prev, [data.userId]: data }));
+    };
+
+    socket.on("fileState", handleFileState);
+    socket.on("changed", handleChanged);
+    socket.on("conflict", handleConflict);
+    socket.on("cursor", handleCursor);
+
+    return () => {
+      leaveFile(repo, path);
+      socket.off("fileState", handleFileState);
+      socket.off("changed", handleChanged);
+      socket.off("conflict", handleConflict);
+      socket.off("cursor", handleCursor);
+    };
+  }, [currentRepository?.name, file?.path]);
+
   const saveFileMutation = useMutation({
     mutationFn: async ({ content }: { content: string }) => {
       if (!file) throw new Error("No file selected");
-      
       const response = await apiRequest("PUT", `/api/workspace/files/${file.id}`, {
         content,
         isModified: true,
@@ -61,17 +110,10 @@ export function CodeEditor({ file, apiKey, currentRepository, currentUser }: Cod
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/workspace/files"] });
-      toast({
-        title: "File saved",
-        description: "Your changes have been saved successfully.",
-      });
+      toast({ title: "File saved", description: "Your changes have been saved successfully." });
     },
-    onError: (error) => {
-      toast({
-        title: "Save failed",
-        description: "Failed to save file changes.",
-        variant: "destructive",
-      });
+    onError: () => {
+      toast({ title: "Save failed", description: "Failed to save file changes.", variant: "destructive" });
     },
   });
 
@@ -86,21 +128,14 @@ export function CodeEditor({ file, apiKey, currentRepository, currentUser }: Cod
     },
     onSuccess: (result) => {
       if (result.success && result.changes.length > 0) {
-        const fileChange = result.changes.find(change => change.path === file?.path);
+        const fileChange = result.changes.find((change: any) => change.path === file?.path);
         if (fileChange) {
           setPendingChanges(fileChange.content);
           setShowDiffPreview(true);
         }
-        toast({
-          title: "AI operation completed",
-          description: result.summary,
-        });
+        toast({ title: "AI operation completed", description: result.summary });
       } else {
-        toast({
-          title: "AI operation failed",
-          description: result.error || "Failed to perform AI operation",
-          variant: "destructive",
-        });
+        toast({ title: "AI operation failed", description: result.error || "Failed to perform AI operation", variant: "destructive" });
       }
     },
   });
@@ -118,14 +153,12 @@ export function CodeEditor({ file, apiKey, currentRepository, currentUser }: Cod
 
   const executeAIOperation = () => {
     if (!file || !aiDescription.trim()) return;
-
     const operation: AICodeOperation = {
       type: aiOperation as any,
       files: [file.path],
       description: aiDescription.trim(),
       repository: currentRepository?.name,
     };
-
     aiOperationMutation.mutate(operation);
     setShowAIDialog(false);
     setAiDescription("");
@@ -135,8 +168,9 @@ export function CodeEditor({ file, apiKey, currentRepository, currentUser }: Cod
     setContent(pendingChanges);
     setShowDiffPreview(false);
     setPendingChanges("");
-    
-    // Auto-save the changes
+    if (file && currentRepository?.name) {
+      sendChange(currentRepository.name, file.path, pendingChanges, docVersion);
+    }
     if (file) {
       saveFileMutation.mutate({ content: pendingChanges });
     }
@@ -151,9 +185,23 @@ export function CodeEditor({ file, apiKey, currentRepository, currentUser }: Cod
     editorRef.current = editor;
   };
 
+  const onEditorChange = (value?: string) => {
+    const val = value ?? "";
+    setContent(val);
+    if (file && currentRepository?.name) {
+      sendChange(currentRepository.name, file.path, val, docVersion);
+    }
+  };
+
+  const onEditorCursor = () => {
+    if (!editorRef.current || !file || !currentRepository?.name) return;
+    const model = editorRef.current.getModel();
+    const position = editorRef.current.getPosition();
+    sendCursor(currentRepository.name, file.path, { position, uri: model?.uri.toString() });
+  };
+
   const getLanguageFromFile = (file: WorkspaceFile): string => {
     if (file.language) return file.language;
-    
     const ext = file.path.split(".").pop()?.toLowerCase();
     const languageMap: Record<string, string> = {
       js: "javascript",
@@ -178,7 +226,6 @@ export function CodeEditor({ file, apiKey, currentRepository, currentUser }: Cod
       xml: "xml",
       sh: "bash",
     };
-    
     return languageMap[ext || ""] || "plaintext";
   };
 
@@ -186,15 +233,11 @@ export function CodeEditor({ file, apiKey, currentRepository, currentUser }: Cod
     return (
       <div className="flex-1 flex items-center justify-center bg-gray-50 dark:bg-slate-800">
         <div className="text-center">
-          <div className="w-16 h-16 bg-gray-200 dark:bg-gray-700 rounded-full flex items-center justify-center mx-auto mb-4">
+          <div className="w-16 h-16 bg-gray-200 dark.bg-gray-700 rounded-full flex items-center justify-center mx-auto mb-4">
             <Save className="w-8 h-8 text-gray-400" />
           </div>
-          <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-2">
-            No File Selected
-          </h2>
-          <p className="text-gray-600 dark:text-gray-400">
-            Select a file from the explorer to start editing
-          </p>
+          <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-2">No File Selected</h2>
+          <p className="text-gray-600 dark:text-gray-400">Select a file from the explorer to start editing</p>
         </div>
       </div>
     );
@@ -202,18 +245,12 @@ export function CodeEditor({ file, apiKey, currentRepository, currentUser }: Cod
 
   return (
     <div className="flex-1 flex flex-col">
-      {/* Editor Header */}
       <div className="bg-white dark:bg-slate-900 border-b border-gray-200 dark:border-slate-700 p-4">
         <div className="flex items-center justify-between">
           <div>
-            <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
-              {file.path}
-            </h2>
-            <p className="text-sm text-gray-500 dark:text-gray-400">
-              {file.language || "Plain text"} • {file.isModified ? "Modified" : "Saved"}
-            </p>
+            <h2 className="text-lg font-semibold text-gray-900 dark:text-white">{file.path}</h2>
+            <p className="text-sm text-gray-500 dark:text-gray-400">{file.language || "Plain text"} • {file.isModified ? "Modified" : "Saved"}</p>
           </div>
-
           <div className="flex items-center space-x-2">
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
@@ -223,29 +260,14 @@ export function CodeEditor({ file, apiKey, currentRepository, currentUser }: Cod
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent>
-                <DropdownMenuItem onClick={() => handleAIOperation("refactor")}>
-                  Refactor Code
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => handleAIOperation("add_feature")}>
-                  Add Feature
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => handleAIOperation("fix_bugs")}>
-                  Fix Bugs
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => handleAIOperation("write_docs")}>
-                  Write Documentation
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => handleAIOperation("analyze")}>
-                  Analyze Code
-                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => handleAIOperation("refactor")}>Refactor Code</DropdownMenuItem>
+                <DropdownMenuItem onClick={() => handleAIOperation("add_feature")}>Add Feature</DropdownMenuItem>
+                <DropdownMenuItem onClick={() => handleAIOperation("fix_bugs")}>Fix Bugs</DropdownMenuItem>
+                <DropdownMenuItem onClick={() => handleAIOperation("write_docs")}>Write Documentation</DropdownMenuItem>
+                <DropdownMenuItem onClick={() => handleAIOperation("analyze")}>Analyze Code</DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
-
-            <Button
-              onClick={handleSave}
-              disabled={content === file.content || saveFileMutation.isPending}
-              size="sm"
-            >
+            <Button onClick={handleSave} disabled={content === file.content || saveFileMutation.isPending} size="sm">
               <Save className="w-4 h-4 mr-2" />
               Save
             </Button>
@@ -253,24 +275,15 @@ export function CodeEditor({ file, apiKey, currentRepository, currentUser }: Cod
         </div>
       </div>
 
-      {/* Monaco Editor */}
-      <div className="flex-1">
+      <div className="flex-1" onKeyUp={onEditorCursor}>
         <Editor
           height="100%"
           language={getLanguageFromFile(file)}
           value={content}
-          onChange={(value) => setContent(value || "")}
+          onChange={onEditorChange}
           onMount={handleEditorDidMount}
           theme={theme === "dark" ? "vs-dark" : "light"}
-          options={{
-            fontSize: 14,
-            minimap: { enabled: true },
-            wordWrap: "on",
-            automaticLayout: true,
-            scrollBeyondLastLine: false,
-            formatOnPaste: true,
-            formatOnType: true,
-          }}
+          options={{ fontSize: 14, minimap: { enabled: true }, wordWrap: "on", automaticLayout: true, scrollBeyondLastLine: false, formatOnPaste: true, formatOnType: true }}
         />
       </div>
 
