@@ -4,7 +4,8 @@ import archiver from "archiver";
 
 export async function createProjectZip(
   projectPath: string,
-  projectName: string
+  projectName: string,
+  includeGit = false
 ): Promise<Buffer> {
   return new Promise(async (resolve, reject) => {
     try {
@@ -73,7 +74,7 @@ export async function createProjectZip(
       // Add project files with filtering
       archive.glob("**/*", {
         cwd: projectPath,
-        ignore: ["node_modules/**", ".git/**", "*.log", ".env*"],
+        ignore: includeGit ? ["node_modules/**", "*.log", ".env*"] : ["node_modules/**", ".git/**", "*.log", ".env*"],
         dot: false,
         follow: false
       }, { prefix: projectName });

@@ -106,7 +106,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
         user = await storage.updateUser(user.id, { accessToken });
       }
 
-      res.json({ user: { ...user, accessToken: undefined } }); // Don't send token to client
+      const { signUserToken } = await import("./middleware/auth");
+      const token = signUserToken({ userId: user.id, username: user.username });
+      res.cookie("token", token, { httpOnly: true, sameSite: "lax", secure: false, maxAge: 7 * 24 * 60 * 60 * 1000 });
+      res.json({ user: { ...user, accessToken: undefined } });
     } catch (error) {
       console.error("GitHub auth error:", error);
       res.status(500).json({ message: "GitHub authentication failed" });
@@ -341,6 +344,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  app.post("/api/git/pull", async (req, res) => {
+    try {
+      const { repositoryName, branch } = req.body;
+      if (!repositoryName) {
+        return res.status(400).json({ message: "Repository name is required" });
+      }
+      const gitService = new GitService(repositoryName);
+      await gitService.pull(branch || "main");
+      res.json({ message: "Pull successful" });
+    } catch (error) {
+      console.error("Pull error:", error);
+      res.status(500).json({ message: "Failed to pull changes" });
+    }
+  });
+
   app.post("/api/git/push", async (req, res) => {
     try {
       const { repositoryName, branch, userId } = req.body;
@@ -407,6 +425,31 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json(history);
     } catch (error) {
       res.status(500).json({ message: "Failed to get commit history" });
+    }
+  });
+
+  app.post("/api/git/pr", async (req, res) => {
+    try {
+      const { repositoryName, base = "main", head, title, body, userId } = req.body as any;
+      if (!repositoryName || !head || !userId) {
+        return res.status(400).json({ message: "repositoryName, head, and userId are required" });
+      }
+      const user = await storage.getUser(userId);
+      if (!user || !user.accessToken) {
+        return res.status(401).json({ message: "GitHub access token not found" });
+      }
+      // Extract owner from repository record if available
+      const repo = await storage.getRepository(repositoryName);
+      // Fallback: assume fullName is owner/name
+      const fullName = (repo?.fullName || `${user.username}/${repositoryName}`);
+      const [owner, repoName] = fullName.split("/");
+      const { Octokit } = await import("@octokit/rest");
+      const octokit = new Octokit({ auth: user.accessToken });
+      const pr = await octokit.pulls.create({ owner, repo: repoName, base, head, title: title || `PR from ${head}`, body: body || "Auto-generated PR" });
+      res.json(pr.data);
+    } catch (error) {
+      console.error("PR error:", error);
+      res.status(500).json({ message: "Failed to create pull request" });
     }
   });
 
@@ -522,10 +565,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/workspace/download/:repositoryName", async (req, res) => {
     try {
       const { repositoryName } = req.params;
+      const includeGit = req.query.includeGit === "1" || req.query.includeGit === "true";
       const gitService = new GitService(repositoryName);
       const projectPath = gitService.getRepoPath();
 
-      const zipBuffer = await createProjectZip(projectPath, repositoryName);
+      const zipBuffer = await createProjectZip(projectPath, repositoryName, includeGit);
 
       res.setHeader("Content-Type", "application/zip");
       res.setHeader("Content-Disposition", `attachment; filename="${repositoryName}.zip"`);

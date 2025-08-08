@@ -18,6 +18,8 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { CollabChat } from "@/components/collab-chat";
+import { joinRepository, leaveRepository } from "@/lib/socket";
 
 export default function Home() {
   const [apiKey, setApiKey] = useState<string | null>(null);
@@ -35,13 +37,21 @@ export default function Home() {
       setApiKey(savedApiKey);
     }
 
-    // Load current project context
     const projectLanguage = localStorage.getItem('currentProjectLanguage');
     const projectFramework = localStorage.getItem('currentProjectFramework');
     if (projectLanguage && projectFramework) {
       setCurrentProject({ language: projectLanguage, framework: projectFramework });
     }
   }, []);
+
+  useEffect(() => {
+    if (currentRepository?.name) {
+      joinRepository(currentRepository.name);
+      return () => {
+        leaveRepository(currentRepository.name!);
+      };
+    }
+  }, [currentRepository?.name]);
 
   const handleApiKeySet = (newApiKey: string) => {
     setApiKey(newApiKey);
@@ -76,12 +86,9 @@ export default function Home() {
   };
 
   const handleFileCreate = (path: string, content?: string) => {
-    // This will be handled by the FileExplorer component
     console.log("Creating file:", path, content);
   };
 
-  // Placeholder for handleNewChat, as it's used in Sidebar but not defined in the original code.
-  // This would typically generate a new chat ID and set it as current.
   const handleNewChat = () => {
     const newChatId = `chat_${Date.now()}`;
     setCurrentChatId(newChatId);
@@ -92,14 +99,10 @@ export default function Home() {
     localStorage.setItem('currentProjectLanguage', language);
     localStorage.setItem('currentProjectFramework', framework);
     setCurrentProject({ language, framework });
-    // Optionally, you might want to clear currentChatId or repository here
-    // depending on how you want to transition between projects and chats/repos
-    setCurrentChatId(null); 
+    setCurrentChatId(null);
     setSelectedFile(null);
-    // Switch to workspace tab
     setActiveTab("workspace");
   };
-
 
   if (!apiKey) {
     return (
@@ -115,10 +118,7 @@ export default function Home() {
         <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex">
           <div className="w-80 bg-white dark:bg-slate-900 border-r border-gray-200 dark:border-slate-700 flex flex-col">
             <div className="p-4 border-b border-gray-200 dark:border-slate-700">
-              <h1 className="text-xl font-bold text-gray-900 dark:text-white mb-4">
-                Code AI Agent
-              </h1>
-
+              <h1 className="text-xl font-bold text-gray-900 dark:text-white mb-4">Code AI Agent</h1>
               <TabsList className="grid w-full grid-cols-3">
                 <TabsTrigger value="chat">Chat</TabsTrigger>
                 <TabsTrigger value="repositories">Repos</TabsTrigger>
@@ -162,44 +162,49 @@ export default function Home() {
                     currentUser={githubUser}
                   />
                 ) : (
-                  <div className="p-4 text-center text-gray-500">
-                    Select a repository first
-                  </div>
+                  <div className="p-4 text-center text-gray-500">Select a repository first</div>
                 )}
               </TabsContent>
             </div>
           </div>
 
-          <div className="flex-1">
-            <TabsContent value="chat" className="h-full">
-              <ChatInterface chatId={currentChatId} apiKey={apiKey} />
-            </TabsContent>
+          <div className="flex-1 grid grid-cols-3">
+            <div className="col-span-2">
+              <TabsContent value="chat" className="h-full">
+                <ChatInterface chatId={currentChatId} apiKey={apiKey} />
+              </TabsContent>
 
-            <TabsContent value="repositories" className="h-full">
-              <div className="flex items-center justify-center h-full bg-gray-50 dark:bg-slate-800">
-                <div className="text-center">
-                  <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-2">
-                    Repository Management
-                  </h2>
-                  <p className="text-gray-600 dark:text-gray-400">
-                    {githubUser 
-                      ? "Select a repository from the sidebar to clone and work with"
-                      : "Connect your GitHub account to access your repositories"
-                    }
-                  </p>
+              <TabsContent value="repositories" className="h-full">
+                <div className="flex items-center justify-center h-full bg-gray-50 dark:bg-slate-800">
+                  <div className="text-center">
+                    <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-2">Repository Management</h2>
+                    <p className="text-gray-600 dark:text-gray-400">
+                      {githubUser 
+                        ? "Select a repository from the sidebar to clone and work with"
+                        : "Connect your GitHub account to access your repositories"
+                      }
+                    </p>
+                  </div>
                 </div>
-              </div>
-            </TabsContent>
+              </TabsContent>
 
-            <TabsContent value="workspace" className="h-full">
-              <CodeEditor
-                file={selectedFile}
-                apiKey={apiKey}
-                currentRepository={currentRepository}
-                currentUser={githubUser}
-                currentProject={currentProject}
-              />
-            </TabsContent>
+              <TabsContent value="workspace" className="h-full">
+                <CodeEditor
+                  file={selectedFile}
+                  apiKey={apiKey}
+                  currentRepository={currentRepository}
+                  currentUser={githubUser}
+                  currentProject={currentProject}
+                />
+              </TabsContent>
+            </div>
+            <div className="col-span-1 border-l border-gray-200 dark:border-slate-700">
+              <TabsContent value="workspace" className="h-full">
+                <CollabChat repositoryName={currentRepository?.name} />
+              </TabsContent>
+              <TabsContent value="chat" className="h-full" />
+              <TabsContent value="repositories" className="h-full" />
+            </div>
           </div>
         </Tabs>
       </div>
@@ -208,15 +213,11 @@ export default function Home() {
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Logout</AlertDialogTitle>
-            <AlertDialogDescription>
-              Are you sure you want to logout? Your API key will be removed from this device.
-            </AlertDialogDescription>
+            <AlertDialogDescription>Are you sure you want to logout? Your API key will be removed from this device.</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={confirmLogout} className="bg-red-600 hover:bg-red-700">
-              Logout
-            </AlertDialogAction>
+            <AlertDialogAction onClick={confirmLogout} className="bg-red-600 hover:bg-red-700">Logout</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
