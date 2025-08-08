@@ -12,7 +12,6 @@ import {
   Download,
   GitBranch,
   GitCommit,
-  GitPush,
   MoreHorizontal,
   Circle,
   Dot

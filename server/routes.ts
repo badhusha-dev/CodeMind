@@ -107,7 +107,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       const { signUserToken } = await import("./middleware/auth");
-      const token = signUserToken({ userId: user.id, username: user.username });
+      if (!user) return res.status(500).json({ message: "User not found after auth" });
+      const token = signUserToken({ userId: user.id!, username: user.username });
       res.cookie("token", token, { httpOnly: true, sameSite: "lax", secure: false, maxAge: 7 * 24 * 60 * 60 * 1000 });
       res.json({ user: { ...user, accessToken: undefined } });
     } catch (error) {
@@ -703,9 +704,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       // Create user message
-      const userMessage: NewMessage = {
+      const userMessage = {
         chatId,
-        role: "user",
+        role: "user" as const,
         content,
       };
 
@@ -716,9 +717,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       await trackApiUsage(apiKey);
 
       // Create assistant message
-      const assistantMessage: NewMessage = {
+      const assistantMessage = {
         chatId,
-        role: "assistant",
+        role: "assistant" as const,
         content: aiResponse,
       };
 
