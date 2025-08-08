@@ -119,7 +119,7 @@ export function Sidebar({ currentChatId, onSelectChat, onLogout, apiKey }: Sideb
             <Plus className="w-4 h-4 mr-2" />
             New Chat
           </Button>
-          
+
           <Button
             onClick={() => setShowNewProjectModal(true)}
             variant="outline"
@@ -243,14 +243,6 @@ export function Sidebar({ currentChatId, onSelectChat, onLogout, apiKey }: Sideb
         </div>
       </div>
 
-      <NewProjectModal 
-        open={showNewProjectModal}
-        onOpenChange={setShowNewProjectModal}
-        onProjectCreated={(project) => {
-          // Optionally handle project creation success
-          console.log('Project created:', project);
-        }}
-      />
     </div>
   );
 }

@@ -27,10 +27,65 @@ export function ChatInterface({ chatId, apiKey }: ChatInterfaceProps) {
   const queryClient = useQueryClient();
   const { toast } = useToast();
 
-  // State for new project modal (for future implementation based on user request)
-  const [isNewProjectModalOpen, setIsNewProjectModalOpen] = useState(false);
-  const [selectedLanguage, setSelectedLanguage] = useState("");
-  const [selectedFramework, setSelectedFramework] = useState("");
+  // Function to detect project framework and language from user message
+  const detectProjectFromMessage = (message: string): { language: string; framework: string; projectName?: string } | null => {
+    const lowerMessage = message.toLowerCase();
+    
+    // Framework patterns
+    const frameworks = {
+      'react': { language: 'typescript', framework: 'react-vite' },
+      'react app': { language: 'typescript', framework: 'react-vite' },
+      'next.js': { language: 'typescript', framework: 'nextjs' },
+      'nextjs': { language: 'typescript', framework: 'nextjs' },
+      'express': { language: 'typescript', framework: 'express' },
+      'express.js': { language: 'typescript', framework: 'express' },
+      'node.js': { language: 'typescript', framework: 'node' },
+      'nodejs': { language: 'typescript', framework: 'node' },
+      'flask': { language: 'python', framework: 'flask' },
+      'django': { language: 'python', framework: 'django' },
+      'fastapi': { language: 'python', framework: 'fastapi' },
+      'spring boot': { language: 'java', framework: 'spring-boot' },
+      'spring-boot': { language: 'java', framework: 'spring-boot' },
+    };
+
+    // Language-specific keywords that might indicate a new project
+    const projectKeywords = ['create', 'build', 'make', 'develop', 'generate', 'project', 'app', 'application'];
+    const hasProjectIntent = projectKeywords.some(keyword => lowerMessage.includes(keyword));
+
+    if (hasProjectIntent) {
+      for (const [frameworkKey, config] of Object.entries(frameworks)) {
+        if (lowerMessage.includes(frameworkKey)) {
+          // Try to extract project name
+          const nameMatch = message.match(/(?:create|build|make)\s+(?:a|an)?\s*(\w+(?:\s+\w+)*?)(?:\s+(?:app|application|project))?(?:\s+(?:using|with|in))/i);
+          const projectName = nameMatch ? nameMatch[1].replace(/\s+/g, '-').toLowerCase() : undefined;
+          
+          return {
+            language: config.language,
+            framework: config.framework,
+            projectName
+          };
+        }
+      }
+
+      // Default to React if project intent detected but no specific framework
+      if (lowerMessage.includes('javascript') || lowerMessage.includes('js')) {
+        return { language: 'javascript', framework: 'react-vite' };
+      }
+      if (lowerMessage.includes('typescript') || lowerMessage.includes('ts')) {
+        return { language: 'typescript', framework: 'react-vite' };
+      }
+      if (lowerMessage.includes('python')) {
+        return { language: 'python', framework: 'flask' };
+      }
+      if (lowerMessage.includes('java')) {
+        return { language: 'java', framework: 'spring-boot' };
+      }
+    }
+
+    return null;
+  };
+
+  // Remove modal state variables as they're no longer needed
 
   // Added isDownloading state to fix the crash
   const [isThinking, setIsThinking] = useState(false);
@@ -51,6 +106,21 @@ export function ChatInterface({ chatId, apiKey }: ChatInterfaceProps) {
 
   const sendMessageMutation = useMutation({
     mutationFn: async ({ content, chatId: currentChatId }: { content: string; chatId: string }) => {
+      // First, check if this message contains framework/project creation intent
+      const projectInfo = detectProjectFromMessage(content);
+      if (projectInfo) {
+        // Store project info in localStorage
+        localStorage.setItem('currentProjectLanguage', projectInfo.language);
+        localStorage.setItem('currentProjectFramework', projectInfo.framework);
+        
+        // Create project structure first
+        await apiRequest("POST", "/api/projects/create", {
+          projectName: projectInfo.projectName || "ai-project",
+          language: projectInfo.language,
+          framework: projectInfo.framework,
+        });
+      }
+
       const response = await apiRequest("POST", `/api/chats/${currentChatId}/messages`, {
         content,
         apiKey,
@@ -60,6 +130,7 @@ export function ChatInterface({ chatId, apiKey }: ChatInterfaceProps) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/chats", chatId, "messages"] });
       queryClient.invalidateQueries({ queryKey: ["/api/chats"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/workspace/files"] });
       setMessage("");
     },
   });
@@ -208,46 +279,7 @@ export function ChatInterface({ chatId, apiKey }: ChatInterfaceProps) {
     downloadProjectMutation.mutate();
   };
 
-  // Placeholder function for new project creation
-  const createNewProject = async () => {
-    if (!selectedLanguage || !selectedFramework) {
-      toast({
-        title: "Missing Information",
-        description: "Please select both programming language and framework.",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    try {
-      const response = await apiRequest("POST", "/api/new-project", {
-        language: selectedLanguage,
-        framework: selectedFramework,
-      });
-      const result = await response.json();
-
-      // Store selection in workspace session (e.g., localStorage for simplicity)
-      localStorage.setItem('currentProjectLanguage', selectedLanguage);
-      localStorage.setItem('currentProjectFramework', selectedFramework);
-
-      toast({
-        title: "New Project Created",
-        description: `Project scaffolded for ${selectedFramework} (${selectedLanguage}).`,
-      });
-
-      // Close modal and potentially refresh or navigate
-      setIsNewProjectModalOpen(false);
-      // In a real app, you might want to clear current messages or start a new chat context.
-      // queryClient.invalidateQueries({ queryKey: ["/api/chats"] }); // Example to refresh chats list
-    } catch (error) {
-      console.error("Project creation failed:", error);
-      toast({
-        title: "Project Creation Failed",
-        description: error instanceof Error ? error.message : "Failed to create project.",
-        variant: "destructive",
-      });
-    }
-  };
+  
 
   if (!chatId) {
     return (
@@ -259,82 +291,21 @@ export function ChatInterface({ chatId, apiKey }: ChatInterfaceProps) {
           <h2 className="text-2xl font-semibold text-gray-900 dark:text-white mb-2">
             Welcome to Code AI Agent
           </h2>
-          <p className="text-gray-600 dark:text-gray-400 max-w-md mx-auto">
-            Start a new conversation to begin coding with AI assistance. Click "New Chat" to get started.
+          <p className="text-gray-600 dark:text-gray-400 max-w-md mx-auto mb-4">
+            Start a new conversation to begin coding with AI assistance. Just mention what you want to build!
           </p>
-          {/* Button to open the new project modal */}
-          <Button onClick={() => setIsNewProjectModalOpen(true)} className="mt-4">
-            New Project
-          </Button>
+          <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4 max-w-lg mx-auto">
+            <p className="text-sm text-blue-800 dark:text-blue-200 font-medium mb-2">✨ Try these examples:</p>
+            <ul className="text-xs text-blue-700 dark:text-blue-300 space-y-1">
+              <li>• "Create a React e-commerce app"</li>
+              <li>• "Build a Flask API for user management"</li>
+              <li>• "Make a Spring Boot REST service"</li>
+              <li>• "Develop a Next.js blog application"</li>
+            </ul>
+          </div>
         </div>
 
-        {/* New Project Modal (Placeholder for implementation) */}
-        {isNewProjectModalOpen && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
-            <div className="bg-white dark:bg-gray-800 p-8 rounded-lg shadow-xl max-w-lg w-full">
-              <div className="flex justify-between items-center mb-6">
-                <h3 className="text-xl font-semibold text-gray-900 dark:text-white">Create New Project</h3>
-                <Button variant="ghost" size="icon" onClick={() => setIsNewProjectModalOpen(false)}>
-                  <X className="w-6 h-6 text-gray-500 dark:text-gray-400" />
-                </Button>
-              </div>
-              <div className="space-y-6">
-                <div>
-                  <label htmlFor="language" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Programming Language</label>
-                  <select
-                    id="language"
-                    value={selectedLanguage}
-                    onChange={(e) => setSelectedLanguage(e.target.value)}
-                    className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-blue-500 focus:border-blue-500"
-                  >
-                    <option value="">Select Language</option>
-                    <option value="JavaScript">JavaScript</option>
-                    <option value="TypeScript">TypeScript</option>
-                    <option value="Python">Python</option>
-                    <option value="Java">Java</option>
-                    {/* Add more languages */}
-                  </select>
-                </div>
-                <div>
-                  <label htmlFor="framework" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Framework</label>
-                  <select
-                    id="framework"
-                    value={selectedFramework}
-                    onChange={(e) => setSelectedFramework(e.target.value)}
-                    className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-blue-500 focus:border-blue-500"
-                  >
-                    <option value="">Select Framework</option>
-                    {/* Options based on language, simplified here */}
-                    {selectedLanguage === "JavaScript" && (
-                      <>
-                        <option value="React">React</option>
-                        <option value="Next.js">Next.js</option>
-                        <option value="Node.js + Express">Node.js + Express</option>
-                      </>
-                    )}
-                    {selectedLanguage === "Python" && (
-                      <>
-                        <option value="Flask">Flask</option>
-                        <option value="Django">Django</option>
-                      </>
-                    )}
-                    {selectedLanguage === "Java" && (
-                      <>
-                        <option value="Spring Boot">Spring Boot</option>
-                      </>
-                    )}
-                    {/* Add more frameworks */}
-                  </select>
-                </div>
-              </div>
-              <div className="flex justify-end mt-6">
-                <Button onClick={createNewProject} className="bg-blue-600 hover:bg-blue-700 text-white">
-                  Create Project
-                </Button>
-              </div>
-            </div>
-          </div>
-        )}
+        
       </div>
     );
   }
@@ -389,13 +360,13 @@ export function ChatInterface({ chatId, apiKey }: ChatInterfaceProps) {
                   I'm your AI coding assistant powered by Google's Gemini 2.5 Pro. I can help you:
                 </p>
                 <ul className="text-gray-700 dark:text-gray-300 text-sm ml-4 space-y-1 mb-3">
-                  <li>• Generate code in any programming language or framework</li>
-                  <li>• Debug and fix coding errors</li>
-                  <li>• Explain complex code concepts</li>
-                  <li>• Review and optimize your code</li>
+                  <li>• <strong>Create complete projects</strong> - Just say "Create a React app" or "Build a Flask API"</li>
+                  <li>• <strong>Generate code</strong> in any programming language or framework</li>
+                  <li>• <strong>Debug and fix</strong> coding errors</li>
+                  <li>• <strong>Explain concepts</strong> and review your code</li>
                 </ul>
                 <p className="text-gray-700 dark:text-gray-300 text-sm">
-                  Just mention the language or framework you want to work with in your message! 🚀
+                  🚀 <strong>Pro tip:</strong> Start with "Create", "Build", or "Make" + your project idea, and I'll set up the entire framework structure for you!
                 </p>
               </div>
             </div>

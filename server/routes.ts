@@ -8,6 +8,64 @@ import { getGitHubAuthUrl, exchangeCodeForToken, getGitHubUser, getGitHubReposit
 import { GitService } from "./services/git";
 import { performAICodeOperation, generateCommitMessage, detectLanguage } from "./services/ai-code";
 import { createProjectZip, saveUploadedFile } from "./services/workspace";
+import { generateProject } from "./services/ai-code";
+import { trackApiUsage, getApiUsage } from "./services/gemini";
+import multer from 'multer';
+import { createFrameworkStructure, createFrameworkProjectZip } from './services/workspace';
+
+// Helper function to detect project framework from message content
+function detectProjectFromMessage(message: string): { language: string; framework: string; projectName?: string } | null {
+  const lowerMessage = message.toLowerCase();
+
+  const frameworks = {
+    'react': { language: 'typescript', framework: 'react-vite' },
+    'react app': { language: 'typescript', framework: 'react-vite' },
+    'next.js': { language: 'typescript', framework: 'nextjs' },
+    'nextjs': { language: 'typescript', framework: 'nextjs' },
+    'express': { language: 'typescript', framework: 'express' },
+    'express.js': { language: 'typescript', framework: 'express' },
+    'node.js': { language: 'typescript', framework: 'node' },
+    'nodejs': { language: 'typescript', framework: 'node' },
+    'flask': { language: 'python', framework: 'flask' },
+    'django': { language: 'python', framework: 'django' },
+    'fastapi': { language: 'python', framework: 'fastapi' },
+    'spring boot': { language: 'java', framework: 'spring-boot' },
+    'spring-boot': { language: 'java', framework: 'spring-boot' },
+  };
+
+  const projectKeywords = ['create', 'build', 'make', 'develop', 'generate', 'project', 'app', 'application'];
+  const hasProjectIntent = projectKeywords.some(keyword => lowerMessage.includes(keyword));
+
+  if (hasProjectIntent) {
+    for (const [frameworkKey, config] of Object.entries(frameworks)) {
+      if (lowerMessage.includes(frameworkKey)) {
+        const nameMatch = message.match(/(?:create|build|make)\s+(?:a|an)?\s*(\w+(?:\s+\w+)*?)(?:\s+(?:app|application|project))?(?:\s+(?:using|with|in))/i);
+        const projectName = nameMatch ? nameMatch[1].replace(/\s+/g, '-').toLowerCase() : 'ai-project';
+
+        return {
+          language: config.language,
+          framework: config.framework,
+          projectName
+        };
+      }
+    }
+
+    if (lowerMessage.includes('javascript') || lowerMessage.includes('js')) {
+      return { language: 'javascript', framework: 'react-vite', projectName: 'ai-project' };
+    }
+    if (lowerMessage.includes('typescript') || lowerMessage.includes('ts')) {
+      return { language: 'typescript', framework: 'react-vite', projectName: 'ai-project' };
+    }
+    if (lowerMessage.includes('python')) {
+      return { language: 'python', framework: 'flask', projectName: 'ai-project' };
+    }
+    if (lowerMessage.includes('java')) {
+      return { language: 'java', framework: 'spring-boot', projectName: 'ai-project' };
+    }
+  }
+
+  return null;
+}
 
 // Configure multer for file uploads
 const upload = multer({ storage: multer.memoryStorage() });
@@ -26,14 +84,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/api/auth/github/callback", async (req, res) => {
     try {
       const { code } = req.body;
-      
+
       if (!code) {
         return res.status(400).json({ message: "Authorization code is required" });
       }
 
       const accessToken = await exchangeCodeForToken(code);
       const githubUser = await getGitHubUser(accessToken);
-      
+
       // Check if user exists, create if not
       let user = await storage.getUserByGithubId(githubUser.id.toString());
       if (!user) {
@@ -93,7 +151,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/api/repositories/clone", async (req, res) => {
     try {
       const { repositoryId, userId } = req.body;
-      
+
       if (!repositoryId || !userId) {
         return res.status(400).json({ message: "Repository ID and User ID are required" });
       }
@@ -112,7 +170,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Clone the repository
       const gitService = new GitService(repository.name);
       await gitService.cloneRepository(repository.cloneUrl, user.accessToken);
-      
+
       // Update repository status
       repository = await storage.updateRepository(repositoryId, {
         isCloned: true,
@@ -192,11 +250,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
         content,
         isModified: isModified !== undefined ? isModified : true,
       });
-      
+
       if (!file) {
         return res.status(404).json({ message: "File not found" });
       }
-      
+
       res.json(file);
     } catch (error) {
       res.status(500).json({ message: "Failed to update file" });
@@ -225,7 +283,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const { repositoryId } = req.body;
       const content = req.file.buffer.toString("utf-8");
       const language = detectLanguage(req.file.originalname);
-      
+
       const file = await storage.createWorkspaceFile({
         repositoryId: repositoryId || null,
         path: req.file.originalname,
@@ -261,22 +319,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/api/git/commit", async (req, res) => {
     try {
       const { repositoryName, message, files, authorName, authorEmail, userId } = req.body;
-      
+
       if (!repositoryName || !message) {
         return res.status(400).json({ message: "Repository name and message are required" });
       }
 
       const gitService = new GitService(repositoryName);
-      
+
       // Add files if specified
       if (files && files.length > 0) {
         await gitService.addFiles(files);
       }
-      
+
       // Commit with author info if provided
       const author = authorName && authorEmail ? { name: authorName, email: authorEmail } : undefined;
       const commitHash = await gitService.commit(message, author);
-      
+
       res.json({ commitHash, message: "Commit successful" });
     } catch (error) {
       console.error("Commit error:", error);
@@ -287,7 +345,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/api/git/push", async (req, res) => {
     try {
       const { repositoryName, branch, userId } = req.body;
-      
+
       if (!repositoryName || !userId) {
         return res.status(400).json({ message: "Repository name and user ID are required" });
       }
@@ -299,7 +357,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const gitService = new GitService(repositoryName);
       await gitService.push(branch || "main", user.accessToken);
-      
+
       res.json({ message: "Push successful" });
     } catch (error) {
       console.error("Push error:", error);
@@ -312,7 +370,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const gitService = new GitService(req.params.repositoryName);
       const branches = await gitService.getBranches();
       const currentBranch = await gitService.getCurrentBranch();
-      
+
       res.json({ branches, currentBranch });
     } catch (error) {
       res.status(500).json({ message: "Failed to get branches" });
@@ -322,19 +380,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/api/git/branch", async (req, res) => {
     try {
       const { repositoryName, branchName, switchTo } = req.body;
-      
+
       if (!repositoryName || !branchName) {
         return res.status(400).json({ message: "Repository name and branch name are required" });
       }
 
       const gitService = new GitService(repositoryName);
-      
+
       if (switchTo) {
         await gitService.switchBranch(branchName);
       } else {
         await gitService.createBranch(branchName);
       }
-      
+
       res.json({ message: `Branch ${switchTo ? 'switched to' : 'created'}: ${branchName}` });
     } catch (error) {
       res.status(500).json({ message: `Failed to ${req.body.switchTo ? 'switch to' : 'create'} branch` });
@@ -346,7 +404,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const gitService = new GitService(req.params.repositoryName);
       const limit = parseInt(req.query.limit as string) || 10;
       const history = await gitService.getCommitHistory(limit);
-      
+
       res.json(history);
     } catch (error) {
       res.status(500).json({ message: "Failed to get commit history" });
@@ -358,7 +416,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const gitService = new GitService(req.params.repositoryName);
       const file = req.query.file as string;
       const diff = await gitService.getDiff(file);
-      
+
       res.json({ diff });
     } catch (error) {
       res.status(500).json({ message: "Failed to get diff" });
@@ -369,19 +427,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/api/ai/code-operation", async (req, res) => {
     try {
       const { operation, apiKey, repositoryName } = req.body;
-      
+
       if (!operation || !apiKey) {
         return res.status(400).json({ message: "Operation and API key are required" });
       }
 
       const gitService = repositoryName ? new GitService(repositoryName) : undefined;
       const result = await performAICodeOperation(operation, apiKey, gitService);
-      
+
       if (result.success && gitService) {
         // Apply changes to files
         for (const change of result.changes) {
           await gitService.writeFile(change.path, change.content);
-          
+
           // Update workspace file record
           const existingFile = await storage.getWorkspaceFileByPath(change.path, repositoryName);
           if (existingFile) {
@@ -401,7 +459,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           }
         }
       }
-      
+
       res.json(result);
     } catch (error) {
       console.error("AI operation error:", error);
@@ -412,7 +470,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/api/ai/commit-message", async (req, res) => {
     try {
       const { changes, apiKey } = req.body;
-      
+
       if (!changes || !apiKey) {
         return res.status(400).json({ message: "Changes and API key are required" });
       }
@@ -428,14 +486,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/api/projects/create", async (req, res) => {
     try {
       const { language, framework, projectName } = req.body;
-      
+
       if (!language || !framework || !projectName) {
         return res.status(400).json({ message: "Language, framework, and project name are required" });
       }
 
       const { createFrameworkStructure } = await import("./services/workspace");
       const projectStructure = await createFrameworkStructure(language, framework, projectName);
-      
+
       // Create workspace files for the framework structure
       const createdFiles = [];
       for (const file of projectStructure.files) {
@@ -449,11 +507,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
         createdFiles.push(workspaceFile);
       }
-      
-      res.json({ 
+
+      res.json({
         projectStructure,
         files: createdFiles,
-        message: `${framework} project structure created successfully` 
+        message: `${framework} project structure created successfully`
       });
     } catch (error) {
       console.error("Project creation error:", error);
@@ -467,9 +525,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const { repositoryName } = req.params;
       const gitService = new GitService(repositoryName);
       const projectPath = gitService.getRepoPath();
-      
+
       const zipBuffer = await createProjectZip(projectPath, repositoryName);
-      
+
       res.setHeader("Content-Type", "application/zip");
       res.setHeader("Content-Disposition", `attachment; filename="${repositoryName}.zip"`);
       res.setHeader("Content-Length", zipBuffer.length.toString());
@@ -484,7 +542,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/api/validate-key", async (req, res) => {
     try {
       const { apiKey } = req.body;
-      
+
       if (!apiKey) {
         return res.status(400).json({ message: "API key is required" });
       }
@@ -500,14 +558,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/api/usage-stats", async (req, res) => {
     try {
       const { apiKey } = req.body;
-      
+
       if (!apiKey) {
         return res.status(400).json({ message: "API key is required" });
       }
 
       const { getApiUsage } = await import("./services/gemini");
       const usage = getApiUsage(apiKey);
-      
+
       res.json(usage || {
         requestCount: 0,
         totalTokens: 0,
@@ -578,37 +636,50 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Send message and get AI response
-  app.post("/api/chats/:id/messages", async (req, res) => {
+  app.post("/api/chats/:chatId/messages", async (req, res) => {
+    const { content, apiKey } = req.body;
+    const { chatId } = req.params;
     try {
-      const { content, apiKey } = req.body;
-      const chatId = req.params.id;
-      
-      if (!content || !apiKey) {
-        return res.status(400).json({ message: "Content and API key are required" });
-      }
+      // Detect if this message contains project creation intent
+      const projectInfo = detectProjectFromMessage(content);
 
-      // Get chat to determine language
-      const chat = await storage.getChat(chatId);
-      if (!chat) {
-        return res.status(404).json({ message: "Chat not found" });
+      if (projectInfo) {
+        try {
+          // Create project structure automatically
+          const projectStructure = await createFrameworkStructure(
+            projectInfo.language,
+            projectInfo.framework,
+            projectInfo.projectName || 'ai-project'
+          );
+
+          console.log(`Auto-created ${projectInfo.framework} project structure for ${projectInfo.language}`);
+        } catch (projectError) {
+          console.error('Error creating project structure:', projectError);
+          // Continue with message processing even if project creation fails
+        }
       }
 
       // Create user message
-      const userMessage = await storage.createMessage({
+      const userMessage: NewMessage = {
         chatId,
         role: "user",
         content,
-      });
+      };
 
-      // Generate AI response
-      const aiResponse = await generateCodeResponse(content, apiKey);
-      
-      // Create AI message
-      const aiMessage = await storage.createMessage({
+      const insertedUserMessage = await storage.createMessage(userMessage);
+
+      // Generate AI response using Gemini
+      const aiResponse = await generateProject(content, apiKey);
+      await trackApiUsage(apiKey);
+
+      // Create assistant message
+      const assistantMessage: NewMessage = {
         chatId,
         role: "assistant",
-        content: aiResponse.content,
-      });
+        content: aiResponse,
+      };
+
+      const insertedAssistantMessage = await storage.createMessage(assistantMessage);
 
       // Update chat title if it's the first message
       if (content.length > 0) {
@@ -619,10 +690,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       }
 
-      res.json({ userMessage, aiMessage });
+      res.json({ userMessage: insertedUserMessage, aiMessage: insertedAssistantMessage });
     } catch (error) {
-      console.error("Error in message endpoint:", error);
-      res.status(500).json({ message: "Failed to process message" });
+      console.error("Error creating message:", error);
+      res.status(500).json({ error: "Failed to create message" });
     }
   });
 
@@ -635,7 +706,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       const messages = await storage.getMessages(req.params.id);
-      
+
       let content = `Code AI Agent Chat Export\n`;
       content += `Chat Title: ${chat.title}\n`;
       content += `Created: ${chat.createdAt.toLocaleString()}\n`;
@@ -661,20 +732,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const { language, framework } = req.query;
       const { createChatProjectZip, createFrameworkProjectZip } = await import("./services/workspace");
-      
+
       // Get all chats and messages to extract code
       const chats = await storage.getChats();
       const allMessages = [];
-      
+
       for (const chat of chats) {
         const messages = await storage.getMessages(chat.id);
         allMessages.push(...messages);
       }
-      
+
       // Create project name based on timestamp
       const timestamp = new Date().toISOString().slice(0, 19).replace(/:/g, "-");
       const projectName = `ai-generated-project-${timestamp}`;
-      
+
       let zipBuffer;
       if (language && framework) {
         // Create framework-aware project
@@ -683,7 +754,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         // Fallback to regular chat project
         zipBuffer = await createChatProjectZip(allMessages, projectName);
       }
-      
+
       res.setHeader("Content-Type", "application/zip");
       res.setHeader("Content-Disposition", `attachment; filename="${projectName}.zip"`);
       res.setHeader("Content-Length", zipBuffer.length.toString());
