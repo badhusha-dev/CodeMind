@@ -10,7 +10,6 @@ import { performAICodeOperation, generateCommitMessage, detectLanguage } from ".
 import { createProjectZip, saveUploadedFile } from "./services/workspace";
 import { generateProject } from "./services/ai-code";
 import { trackApiUsage, getApiUsage } from "./services/gemini";
-import multer from 'multer';
 import { createFrameworkStructure, createFrameworkProjectZip } from './services/workspace';
 
 // Helper function to detect project framework from message content

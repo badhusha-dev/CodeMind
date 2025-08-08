@@ -139,3 +139,8 @@ export function getApiUsage(apiKey: string): ApiUsageStats | null {
   const keyHash = hashApiKey(apiKey);
   return apiUsageMap.get(keyHash) || null;
 }
+
+export async function trackApiUsage(apiKey: string): Promise<void> {
+  // This function is called to track usage without generating content
+  updateApiUsage(apiKey, 0);
+}
