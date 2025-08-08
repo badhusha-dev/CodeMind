@@ -9,6 +9,12 @@ import { apiRequest } from "@/lib/queryClient";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 
+// Placeholder for ApiUsageStats type, assuming it's defined elsewhere
+type ApiUsageStats = {
+  requests: number;
+  tokens: number;
+};
+
 interface ChatInterfaceProps {
   chatId: string | null;
   apiKey: string;
@@ -25,6 +31,11 @@ export function ChatInterface({ chatId, apiKey }: ChatInterfaceProps) {
   const [isNewProjectModalOpen, setIsNewProjectModalOpen] = useState(false);
   const [selectedLanguage, setSelectedLanguage] = useState("");
   const [selectedFramework, setSelectedFramework] = useState("");
+
+  // Added isDownloading state to fix the crash
+  const [isThinking, setIsThinking] = useState(false);
+  const [isDownloading, setIsDownloading] = useState(false);
+  const [apiUsage, setApiUsage] = useState<ApiUsageStats | null>(null);
 
 
   const { data: chat } = useQuery<Chat>({
@@ -76,6 +87,7 @@ export function ChatInterface({ chatId, apiKey }: ChatInterfaceProps) {
       // const [isDownloading, setIsDownloading] = useState(false); // This line is not in original, but present in changes
       // For now, assuming isDownloading is managed elsewhere or not directly needed for this mutation's state
 
+      setIsDownloading(true); // Set downloading state to true
       const timestamp = new Date().toISOString().slice(0, 19).replace(/:/g, "-");
       const filename = `ai-generated-project-${timestamp}.zip`;
 
@@ -124,6 +136,7 @@ export function ChatInterface({ chatId, apiKey }: ChatInterfaceProps) {
       setTimeout(() => {
         document.body.removeChild(a);
         window.URL.revokeObjectURL(downloadUrl);
+        setIsDownloading(false); // Set downloading state to false
       }, 100);
 
       return { filename, size: blob.size };
@@ -141,6 +154,7 @@ export function ChatInterface({ chatId, apiKey }: ChatInterfaceProps) {
         description: error instanceof Error ? error.message : "Failed to download project. Please try again.",
         variant: "destructive",
       });
+      setIsDownloading(false); // Ensure state is reset on error
     },
   });
 
@@ -424,11 +438,11 @@ export function ChatInterface({ chatId, apiKey }: ChatInterfaceProps) {
                 </p>
                 <Button
                   onClick={handleDownloadProject}
-                  disabled={downloadProjectMutation.isPending}
+                  disabled={downloadProjectMutation.isPending || isDownloading}
                   size="sm"
                   className="bg-blue-600 hover:bg-blue-700 text-white"
                 >
-                  {downloadProjectMutation.isPending ? (
+                  {downloadProjectMutation.isPending || isDownloading ? (
                     <Loader2 className="w-4 h-4 animate-spin mr-2" />
                   ) : (
                     <FolderDown className="w-4 h-4 mr-2" />
