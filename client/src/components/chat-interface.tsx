@@ -1,11 +1,10 @@
 import { useState, useRef, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Send, Download, Trash2, Loader2, Paperclip } from "lucide-react";
 import { MessageBubble } from "./message-bubble";
-import { Message, Chat, PROGRAMMING_LANGUAGES, ProgrammingLanguage } from "@/types/chat";
+import { Message, Chat } from "@/types/chat";
 import { apiRequest } from "@/lib/queryClient";
 import { cn } from "@/lib/utils";
 
@@ -16,7 +15,6 @@ interface ChatInterfaceProps {
 
 export function ChatInterface({ chatId, apiKey }: ChatInterfaceProps) {
   const [message, setMessage] = useState("");
-  const [selectedLanguage, setSelectedLanguage] = useState<ProgrammingLanguage>("javascript");
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const queryClient = useQueryClient();
@@ -72,11 +70,6 @@ export function ChatInterface({ chatId, apiKey }: ChatInterfaceProps) {
     scrollToBottom();
   }, [messages]);
 
-  useEffect(() => {
-    if (chat?.language && chat.language !== selectedLanguage) {
-      setSelectedLanguage(chat.language as ProgrammingLanguage);
-    }
-  }, [chat, selectedLanguage]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -140,25 +133,12 @@ export function ChatInterface({ chatId, apiKey }: ChatInterfaceProps) {
                 {chat?.title || "Loading..."}
               </h2>
               <p className="text-sm text-gray-500 dark:text-gray-400">
-                Chat with AI about code generation and debugging
+                Ask me about any programming language or framework
               </p>
             </div>
           </div>
 
-          <div className="flex items-center space-x-3">
-            <Select value={selectedLanguage} onValueChange={(value) => setSelectedLanguage(value as ProgrammingLanguage)}>
-              <SelectTrigger className="w-40">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {PROGRAMMING_LANGUAGES.map((lang) => (
-                  <SelectItem key={lang.value} value={lang.value}>
-                    {lang.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-
+          <div>
             <Button
               variant="outline"
               size="sm"
@@ -192,13 +172,13 @@ export function ChatInterface({ chatId, apiKey }: ChatInterfaceProps) {
                   I'm your AI coding assistant powered by Google's Gemini 2.5 Pro. I can help you:
                 </p>
                 <ul className="text-gray-700 dark:text-gray-300 text-sm ml-4 space-y-1 mb-3">
-                  <li>• Generate code in multiple programming languages</li>
+                  <li>• Generate code in any programming language or framework</li>
                   <li>• Debug and fix coding errors</li>
                   <li>• Explain complex code concepts</li>
                   <li>• Review and optimize your code</li>
                 </ul>
                 <p className="text-gray-700 dark:text-gray-300 text-sm">
-                  Just ask me anything about code, and I'll help you out! 🚀
+                  Just mention the language or framework you want to work with in your message! 🚀
                 </p>
               </div>
             </div>
@@ -240,7 +220,7 @@ export function ChatInterface({ chatId, apiKey }: ChatInterfaceProps) {
                 value={message}
                 onChange={(e) => setMessage(e.target.value)}
                 onKeyDown={handleKeyDown}
-                placeholder="Ask me anything about code... (Shift+Enter for new line)"
+                placeholder="Ask me about any language or framework... (Shift+Enter for new line)"
                 className="min-h-[48px] max-h-[120px] resize-none pr-12"
                 disabled={sendMessageMutation.isPending}
               />
