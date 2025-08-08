@@ -1,0 +1,287 @@
+import { useState, useRef, useEffect } from "react";
+import { Button } from "@/components/ui/button";
+import { Textarea } from "@/components/ui/textarea";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { Send, Download, Trash2, Loader2, Paperclip } from "lucide-react";
+import { MessageBubble } from "./message-bubble";
+import { Message, Chat, PROGRAMMING_LANGUAGES, ProgrammingLanguage } from "@/types/chat";
+import { apiRequest } from "@/lib/queryClient";
+import { cn } from "@/lib/utils";
+
+interface ChatInterfaceProps {
+  chatId: string | null;
+  apiKey: string;
+}
+
+export function ChatInterface({ chatId, apiKey }: ChatInterfaceProps) {
+  const [message, setMessage] = useState("");
+  const [selectedLanguage, setSelectedLanguage] = useState<ProgrammingLanguage>("javascript");
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const queryClient = useQueryClient();
+
+  const { data: chat } = useQuery<Chat>({
+    queryKey: ["/api/chats", chatId],
+    enabled: !!chatId,
+  });
+
+  const { data: messages = [], isLoading: messagesLoading } = useQuery<Message[]>({
+    queryKey: ["/api/chats", chatId, "messages"],
+    enabled: !!chatId,
+    refetchOnWindowFocus: false,
+  });
+
+  const sendMessageMutation = useMutation({
+    mutationFn: async ({ content, chatId: currentChatId }: { content: string; chatId: string }) => {
+      const response = await apiRequest("POST", `/api/chats/${currentChatId}/messages`, {
+        content,
+        apiKey,
+      });
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/chats", chatId, "messages"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/chats"] });
+      setMessage("");
+    },
+  });
+
+  const downloadChatMutation = useMutation({
+    mutationFn: async (chatId: string) => {
+      const response = await fetch(`/api/chats/${chatId}/download`);
+      if (!response.ok) throw new Error("Download failed");
+      
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `chat-${chatId}.txt`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      window.URL.revokeObjectURL(url);
+    },
+  });
+
+  const scrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  };
+
+  useEffect(() => {
+    scrollToBottom();
+  }, [messages]);
+
+  useEffect(() => {
+    if (chat?.language && chat.language !== selectedLanguage) {
+      setSelectedLanguage(chat.language as ProgrammingLanguage);
+    }
+  }, [chat, selectedLanguage]);
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!message.trim() || !chatId || sendMessageMutation.isPending) return;
+
+    sendMessageMutation.mutate({ content: message.trim(), chatId });
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      handleSubmit(e as any);
+    }
+  };
+
+  const adjustTextareaHeight = () => {
+    const textarea = textareaRef.current;
+    if (textarea) {
+      textarea.style.height = "auto";
+      const scrollHeight = Math.min(textarea.scrollHeight, 120);
+      textarea.style.height = `${scrollHeight}px`;
+    }
+  };
+
+  useEffect(() => {
+    adjustTextareaHeight();
+  }, [message]);
+
+  const downloadChat = () => {
+    if (chatId) {
+      downloadChatMutation.mutate(chatId);
+    }
+  };
+
+  if (!chatId) {
+    return (
+      <div className="flex-1 flex items-center justify-center bg-gray-50 dark:bg-slate-800">
+        <div className="text-center">
+          <div className="w-16 h-16 bg-blue-100 dark:bg-blue-900/30 rounded-full flex items-center justify-center mx-auto mb-4">
+            <Send className="w-8 h-8 text-blue-600 dark:text-blue-400" />
+          </div>
+          <h2 className="text-2xl font-semibold text-gray-900 dark:text-white mb-2">
+            Welcome to Code AI Agent
+          </h2>
+          <p className="text-gray-600 dark:text-gray-400 max-w-md mx-auto">
+            Start a new conversation to begin coding with AI assistance. Click "New Chat" to get started.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex-1 flex flex-col">
+      {/* Chat Header */}
+      <div className="bg-white dark:bg-slate-900 border-b border-gray-200 dark:border-slate-700 p-4">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center space-x-4">
+            <div>
+              <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
+                {chat?.title || "Loading..."}
+              </h2>
+              <p className="text-sm text-gray-500 dark:text-gray-400">
+                Chat with AI about code generation and debugging
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center space-x-3">
+            <Select value={selectedLanguage} onValueChange={(value) => setSelectedLanguage(value as ProgrammingLanguage)}>
+              <SelectTrigger className="w-40">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {PROGRAMMING_LANGUAGES.map((lang) => (
+                  <SelectItem key={lang.value} value={lang.value}>
+                    {lang.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={downloadChat}
+              disabled={downloadChatMutation.isPending || messages.length === 0}
+              title="Download chat as .txt"
+            >
+              <Download className="w-4 h-4" />
+            </Button>
+          </div>
+        </div>
+      </div>
+
+      {/* Messages Area */}
+      <div className="flex-1 overflow-y-auto p-6 space-y-6 bg-gray-50 dark:bg-slate-800">
+        {messagesLoading ? (
+          <div className="flex justify-center">
+            <Loader2 className="w-8 h-8 animate-spin text-gray-400" />
+          </div>
+        ) : messages.length === 0 ? (
+          <div className="flex items-start space-x-3">
+            <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center flex-shrink-0">
+              <Send className="w-4 h-4 text-white" />
+            </div>
+            <div className="flex-1">
+              <div className="bg-gradient-to-br from-blue-50 to-purple-50 dark:from-blue-900/20 dark:to-purple-900/20 rounded-lg p-4 border border-blue-200 dark:border-blue-800">
+                <p className="text-gray-800 dark:text-gray-200 mb-2">
+                  <strong>Welcome to Code AI Agent!</strong> 👋
+                </p>
+                <p className="text-gray-700 dark:text-gray-300 text-sm mb-2">
+                  I'm your AI coding assistant powered by Google's Gemini 2.5 Pro. I can help you:
+                </p>
+                <ul className="text-gray-700 dark:text-gray-300 text-sm ml-4 space-y-1 mb-3">
+                  <li>• Generate code in multiple programming languages</li>
+                  <li>• Debug and fix coding errors</li>
+                  <li>• Explain complex code concepts</li>
+                  <li>• Review and optimize your code</li>
+                </ul>
+                <p className="text-gray-700 dark:text-gray-300 text-sm">
+                  Just ask me anything about code, and I'll help you out! 🚀
+                </p>
+              </div>
+            </div>
+          </div>
+        ) : (
+          messages.map((msg) => <MessageBubble key={msg.id} message={msg} />)
+        )}
+
+        {sendMessageMutation.isPending && (
+          <div className="flex items-start space-x-3">
+            <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center flex-shrink-0">
+              <Loader2 className="w-4 h-4 text-white animate-spin" />
+            </div>
+            <div className="flex-1">
+              <div className="bg-white dark:bg-slate-800 rounded-lg border border-gray-200 dark:border-slate-700 p-4">
+                <div className="flex items-center space-x-2">
+                  <div className="flex space-x-1">
+                    <div className="w-2 h-2 bg-blue-500 rounded-full animate-bounce" />
+                    <div className="w-2 h-2 bg-blue-500 rounded-full animate-bounce" style={{ animationDelay: "0.1s" }} />
+                    <div className="w-2 h-2 bg-blue-500 rounded-full animate-bounce" style={{ animationDelay: "0.2s" }} />
+                  </div>
+                  <span className="text-gray-500 dark:text-gray-400 text-sm">AI is thinking...</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+        
+        <div ref={messagesEndRef} />
+      </div>
+
+      {/* Input Area */}
+      <div className="bg-white dark:bg-slate-900 border-t border-gray-200 dark:border-slate-700 p-4">
+        <div className="max-w-4xl mx-auto">
+          <form onSubmit={handleSubmit} className="flex space-x-4">
+            <div className="flex-1 relative">
+              <Textarea
+                ref={textareaRef}
+                value={message}
+                onChange={(e) => setMessage(e.target.value)}
+                onKeyDown={handleKeyDown}
+                placeholder="Ask me anything about code... (Shift+Enter for new line)"
+                className="min-h-[48px] max-h-[120px] resize-none pr-12"
+                disabled={sendMessageMutation.isPending}
+              />
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="absolute right-3 top-3 p-1 h-auto"
+                title="Attach file (code files only)"
+              >
+                <Paperclip className="w-4 h-4" />
+              </Button>
+            </div>
+
+            <Button
+              type="submit"
+              disabled={!message.trim() || sendMessageMutation.isPending}
+              className="bg-blue-600 hover:bg-blue-700 px-6"
+            >
+              {sendMessageMutation.isPending ? (
+                <Loader2 className="w-4 h-4 animate-spin mr-2" />
+              ) : (
+                <Send className="w-4 h-4 mr-2" />
+              )}
+              Send
+            </Button>
+          </form>
+
+          <div className="flex items-center justify-between mt-3 text-xs text-gray-500 dark:text-gray-400">
+            <div className="flex items-center space-x-4">
+              <span>Press Shift+Enter for new line</span>
+              <span>•</span>
+              <span>Powered by Gemini 2.5 Pro</span>
+            </div>
+            <div className="flex items-center space-x-2">
+              <div className="w-2 h-2 bg-green-500 rounded-full" />
+              <span>Connected</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
