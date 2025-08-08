@@ -619,19 +619,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Download workspace as ZIP
+  // Download workspace as ZIP with AI-generated code from chat
   app.get("/api/workspace/download", async (req, res) => {
     try {
-      const { createProjectZip } = await import("./services/workspace");
+      const { createChatProjectZip } = await import("./services/workspace");
       
-      // Use a more appropriate path for workspace files
-      const workspacePath = process.cwd() + "/workspace";
+      // Get all chats and messages to extract code
+      const chats = await storage.getChats();
+      const allMessages = [];
+      
+      for (const chat of chats) {
+        const messages = await storage.getMessages(chat.id);
+        allMessages.push(...messages);
+      }
       
       // Create project name based on timestamp
       const timestamp = new Date().toISOString().slice(0, 19).replace(/:/g, "-");
       const projectName = `ai-generated-project-${timestamp}`;
       
-      const zipBuffer = await createProjectZip(workspacePath, projectName);
+      const zipBuffer = await createChatProjectZip(allMessages, projectName);
       
       res.setHeader("Content-Type", "application/zip");
       res.setHeader("Content-Disposition", `attachment; filename="${projectName}.zip"`);
