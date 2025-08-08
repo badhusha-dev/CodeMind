@@ -10,21 +10,21 @@ export interface GeminiResponse {
 }
 
 export async function generateCodeResponse(
-  prompt: string, 
-  language: string = "javascript",
+  prompt: string,
   apiKey?: string
 ): Promise<GeminiResponse> {
   try {
     const genAI = apiKey ? new GoogleGenAI({ apiKey }) : ai;
     
     const systemPrompt = `You are an expert coding assistant. You help users with:
-- Code generation in ${language} and other programming languages
+- Code generation in any programming language or framework
 - Debugging and fixing code errors
 - Explaining complex programming concepts
 - Code review and optimization suggestions
 
 Always provide clear, well-commented code examples with explanations.
 Format code blocks using markdown with proper language tags.
+Detect the programming language or framework the user wants to work with from their message.
 Be helpful, accurate, and educational in your responses.`;
 
     const response = await genAI.models.generateContent({

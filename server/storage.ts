@@ -39,7 +39,6 @@ export class MemStorage implements IStorage {
     const now = new Date();
     const chat: Chat = { 
       ...insertChat,
-      language: insertChat.language || "javascript",
       id, 
       createdAt: now, 
       updatedAt: now 

@@ -102,7 +102,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
 
       // Generate AI response
-      const aiResponse = await generateCodeResponse(content, chat.language, apiKey);
+      const aiResponse = await generateCodeResponse(content, apiKey);
       
       // Create AI message
       const aiMessage = await storage.createMessage({
@@ -139,7 +139,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       let content = `Code AI Agent Chat Export\n`;
       content += `Chat Title: ${chat.title}\n`;
-      content += `Language: ${chat.language}\n`;
       content += `Created: ${chat.createdAt.toLocaleString()}\n`;
       content += `\n${"=".repeat(50)}\n\n`;
 

@@ -37,7 +37,6 @@ export function Sidebar({ currentChatId, onSelectChat, onLogout }: SidebarProps)
     mutationFn: async () => {
       const response = await apiRequest("POST", "/api/chats", {
         title: "New Chat",
-        language: "javascript",
       });
       return response.json();
     },
