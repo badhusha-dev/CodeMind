@@ -66,29 +66,57 @@ export function ChatInterface({ chatId, apiKey }: ChatInterfaceProps) {
 
   const downloadProjectMutation = useMutation({
     mutationFn: async () => {
-      const response = await apiRequest("GET", "/api/workspace/download");
-      if (!response.ok) throw new Error("Project download failed");
+      const response = await fetch("/api/workspace/download", {
+        method: "GET",
+        headers: {
+          "Accept": "application/zip",
+        },
+      });
+      
+      if (!response.ok) {
+        throw new Error(`Download failed: ${response.status} ${response.statusText}`);
+      }
+      
+      const contentType = response.headers.get("content-type");
+      if (!contentType || !contentType.includes("application/zip")) {
+        throw new Error("Invalid file type received");
+      }
       
       const blob = await response.blob();
+      if (blob.size === 0) {
+        throw new Error("Downloaded file is empty");
+      }
+      
+      const timestamp = new Date().toISOString().slice(0, 19).replace(/:/g, "-");
+      const filename = `ai-generated-project-${timestamp}.zip`;
+      
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `ai-generated-project.zip`;
+      a.download = filename;
+      a.style.display = "none";
       document.body.appendChild(a);
       a.click();
-      document.body.removeChild(a);
-      window.URL.revokeObjectURL(url);
+      
+      // Clean up
+      setTimeout(() => {
+        document.body.removeChild(a);
+        window.URL.revokeObjectURL(url);
+      }, 100);
+      
+      return { filename, size: blob.size };
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
       toast({
         title: "Project Downloaded",
-        description: "Your AI-generated project has been downloaded successfully.",
+        description: `${data.filename} (${(data.size / 1024).toFixed(1)} KB) downloaded successfully.`,
       });
     },
     onError: (error) => {
+      console.error("Download error:", error);
       toast({
         title: "Download Failed",
-        description: "Failed to download project. Please try again.",
+        description: error instanceof Error ? error.message : "Failed to download project. Please try again.",
         variant: "destructive",
       });
     },

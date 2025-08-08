@@ -435,6 +435,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       res.setHeader("Content-Type", "application/zip");
       res.setHeader("Content-Disposition", `attachment; filename="${repositoryName}.zip"`);
+      res.setHeader("Content-Length", zipBuffer.length.toString());
+      res.setHeader("Cache-Control", "no-cache");
       res.send(zipBuffer);
     } catch (error) {
       console.error("Download error:", error);
@@ -621,7 +623,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/workspace/download", async (req, res) => {
     try {
       const { createProjectZip } = await import("./services/workspace");
-      const workspacePath = process.cwd();
+      
+      // Use a more appropriate path for workspace files
+      const workspacePath = process.cwd() + "/workspace";
       
       // Create project name based on timestamp
       const timestamp = new Date().toISOString().slice(0, 19).replace(/:/g, "-");
@@ -631,6 +635,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       res.setHeader("Content-Type", "application/zip");
       res.setHeader("Content-Disposition", `attachment; filename="${projectName}.zip"`);
+      res.setHeader("Content-Length", zipBuffer.length.toString());
+      res.setHeader("Cache-Control", "no-cache");
       res.send(zipBuffer);
     } catch (error) {
       console.error("Error downloading workspace:", error);

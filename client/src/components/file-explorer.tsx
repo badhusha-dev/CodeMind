@@ -109,20 +109,47 @@ export function FileExplorer({
 
   const downloadProjectMutation = useMutation({
     mutationFn: async () => {
-      if (!currentRepository) throw new Error("No repository selected");
-      
-      const response = await fetch(`/api/workspace/download/${currentRepository.name}`);
-      if (!response.ok) throw new Error("Download failed");
-      
+      if (!currentRepository) {
+        throw new Error("No repository selected");
+      }
+
+      const response = await fetch(`/api/workspace/download/${currentRepository.name}`, {
+        method: "GET",
+        headers: {
+          "Accept": "application/zip",
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error(`Download failed: ${response.status} ${response.statusText}`);
+      }
+
+      const contentType = response.headers.get("content-type");
+      if (!contentType || !contentType.includes("application/zip")) {
+        throw new Error("Invalid file type received");
+      }
+
       const blob = await response.blob();
+      if (blob.size === 0) {
+        throw new Error("Downloaded file is empty");
+      }
+
+      const filename = `${currentRepository.name}.zip`;
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `${currentRepository.name}.zip`;
+      a.download = filename;
+      a.style.display = "none";
       document.body.appendChild(a);
       a.click();
-      document.body.removeChild(a);
-      window.URL.revokeObjectURL(url);
+
+      // Clean up
+      setTimeout(() => {
+        document.body.removeChild(a);
+        window.URL.revokeObjectURL(url);
+      }, 100);
+
+      return { filename, size: blob.size };
     },
   });
 
@@ -137,12 +164,12 @@ export function FileExplorer({
     for (const file of files) {
       const parts = file.path.split("/");
       let currentPath = "";
-      
+
       for (let i = 0; i < parts.length; i++) {
         const part = parts[i];
         const parentPath = currentPath;
         currentPath = currentPath ? `${currentPath}/${part}` : part;
-        
+
         if (!pathMap.has(currentPath)) {
           const node: FileTreeNode = {
             name: part,
@@ -151,9 +178,9 @@ export function FileExplorer({
             children: i === parts.length - 1 ? undefined : [],
             file: i === parts.length - 1 ? file : undefined,
           };
-          
+
           pathMap.set(currentPath, node);
-          
+
           if (parentPath) {
             const parent = pathMap.get(parentPath);
             if (parent && parent.children) {
@@ -194,7 +221,7 @@ export function FileExplorer({
   const handleDrop = (event: React.DragEvent) => {
     event.preventDefault();
     setDragOver(false);
-    
+
     const files = Array.from(event.dataTransfer.files);
     files.forEach(file => {
       const formData = new FormData();
@@ -218,11 +245,11 @@ export function FileExplorer({
 
   const getFileStatus = (filePath: string): "modified" | "new" | "staged" | null => {
     if (!gitStatus) return null;
-    
+
     if (gitStatus.staged.includes(filePath)) return "staged";
     if (gitStatus.modified.includes(filePath)) return "modified";
     if (gitStatus.not_added.includes(filePath) || gitStatus.created.includes(filePath)) return "new";
-    
+
     return null;
   };
 
@@ -279,14 +306,14 @@ export function FileExplorer({
           ) : (
             <File className="w-4 h-4 text-gray-600 dark:text-gray-400" />
           )}
-          
+
           <span className={cn(
             "flex-1 text-sm",
             selectedFile?.path === node.path && "font-medium"
           )}>
             {node.name}
           </span>
-          
+
           {node.type === "file" && node.file && (() => {
             const status = getFileStatus(node.path);
             return status ? (
@@ -299,7 +326,7 @@ export function FileExplorer({
             ) : null;
           })()}
         </div>
-        
+
         {node.type === "folder" && 
          node.children && 
          expandedFolders.has(node.path) && 
@@ -318,7 +345,7 @@ export function FileExplorer({
           <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
             {currentRepository ? currentRepository.name : "Workspace"}
           </h2>
-          
+
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="ghost" size="sm" className="p-2">
@@ -349,7 +376,7 @@ export function FileExplorer({
           <div className="flex items-center space-x-2 text-sm text-gray-600 dark:text-gray-400">
             <GitBranch className="w-4 h-4" />
             <span>main</span>
-            
+
             {gitStatus && (
               <div className="flex items-center space-x-1 ml-2">
                 {gitStatus.modified.length > 0 && (
@@ -393,7 +420,7 @@ export function FileExplorer({
           ) : (
             renderFileTree(fileTree)
           )}
-          
+
           {dragOver && (
             <div className="text-center py-4 text-blue-600 dark:text-blue-400">
               <Upload className="w-8 h-8 mx-auto mb-2" />
@@ -421,7 +448,7 @@ export function FileExplorer({
               Enter the name for your new file. Include the file extension.
             </DialogDescription>
           </DialogHeader>
-          
+
           <Input
             value={newFileName}
             onChange={(e) => setNewFileName(e.target.value)}
@@ -432,7 +459,7 @@ export function FileExplorer({
               }
             }}
           />
-          
+
           <DialogFooter>
             <Button variant="outline" onClick={() => setShowNewFileDialog(false)}>
               Cancel

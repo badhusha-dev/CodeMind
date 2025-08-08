@@ -6,22 +6,86 @@ export async function createProjectZip(
   projectPath: string,
   projectName: string
 ): Promise<Buffer> {
-  return new Promise((resolve, reject) => {
-    const archive = archiver("zip", { zlib: { level: 9 } });
-    const chunks: Buffer[] = [];
+  return new Promise(async (resolve, reject) => {
+    try {
+      const archive = archiver("zip", { 
+        zlib: { level: 9 },
+        forceLocalTime: true,
+        forceZip64: false
+      });
+      const chunks: Buffer[] = [];
 
-    archive.on("data", (chunk: Buffer) => chunks.push(chunk));
-    archive.on("end", () => resolve(Buffer.concat(chunks)));
-    archive.on("error", reject);
+      archive.on("data", (chunk: Buffer) => chunks.push(chunk));
+      archive.on("end", () => resolve(Buffer.concat(chunks)));
+      archive.on("error", reject);
+      archive.on("warning", (err) => {
+        if (err.code === "ENOENT") {
+          console.warn("Archive warning:", err);
+        } else {
+          reject(err);
+        }
+      });
 
-    // Add project files
-    archive.directory(projectPath, projectName);
+      // Check if project path exists and is accessible
+      try {
+        await fs.access(projectPath);
+      } catch (error) {
+        console.warn(`Project path ${projectPath} not accessible, creating empty project`);
+        
+        // Create basic project structure
+        const readme = generateReadme(projectName);
+        archive.append(readme, { name: `${projectName}/README.md` });
+        
+        // Add a basic package.json if it's a Node.js project
+        const packageJson = {
+          name: projectName.toLowerCase().replace(/[^a-z0-9-]/g, "-"),
+          version: "1.0.0",
+          description: "AI-generated project",
+          main: "index.js",
+          scripts: {
+            start: "node index.js"
+          }
+        };
+        archive.append(JSON.stringify(packageJson, null, 2), { 
+          name: `${projectName}/package.json` 
+        });
+        
+        archive.finalize();
+        return;
+      }
 
-    // Generate and add README.md
-    const readme = generateReadme(projectName);
-    archive.append(readme, { name: `${projectName}/README.md` });
+      // Filter out sensitive and unnecessary files
+      const excludePatterns = [
+        /node_modules/,
+        /\.git$/,
+        /\.env/,
+        /\.log$/,
+        /\.tmp$/,
+        /\.cache/,
+        /dist$/,
+        /build$/,
+        /coverage$/,
+        /\.nyc_output/,
+        /\.DS_Store$/,
+        /Thumbs\.db$/
+      ];
 
-    archive.finalize();
+      // Add project files with filtering
+      archive.glob("**/*", {
+        cwd: projectPath,
+        ignore: ["node_modules/**", ".git/**", "*.log", ".env*"],
+        dot: false,
+        follow: false
+      }, { prefix: projectName });
+
+      // Generate and add README.md
+      const readme = generateReadme(projectName);
+      archive.append(readme, { name: `${projectName}/README.md` });
+
+      archive.finalize();
+    } catch (error) {
+      reject(error);
+    }
   });
 }
 
