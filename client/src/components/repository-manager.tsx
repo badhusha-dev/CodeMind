@@ -48,7 +48,7 @@ export function RepositoryManager({
     refetchOnWindowFocus: false,
   });
 
-  const { data: githubRepositories = [], isLoading: loadingGitHub, refetch: refetchGitHub } = useQuery({
+  const { data: githubRepositories = [], isLoading: loadingGitHub, refetch: refetchGitHub } = useQuery<any[]>({
     queryKey: ["/api/repositories/github", currentUser.id],
     refetchOnWindowFocus: false,
   });

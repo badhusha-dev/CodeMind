@@ -131,10 +131,8 @@ export default function Home() {
                 <Sidebar 
                   currentChatId={currentChatId}
                   onSelectChat={setCurrentChatId}
-                  onNewChat={handleNewChat}
                   onLogout={handleLogout}
                   apiKey={apiKey}
-                  onNewProject={handleNewProject}
                 />
               </TabsContent>
 

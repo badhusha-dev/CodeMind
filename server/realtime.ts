@@ -130,7 +130,8 @@ export function setupRealtime(httpServer: Server, _app: Express) {
     });
 
     socket.on("disconnecting", () => {
-      for (const room of socket.rooms) {
+      const rooms = Array.from(socket.rooms);
+      for (const room of rooms) {
         if (room.startsWith("repo:")) {
           const users = roomToUsers.get(room);
           if (users) {
